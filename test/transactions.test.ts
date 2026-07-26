@@ -19,13 +19,19 @@ let client: Client;
 let api: ZenMoneyAPI;
 let state: ZenState;
 
-async function setup(opts?: { synced?: boolean; transactions?: ReturnType<typeof makeTransaction>[] }) {
+async function setup(opts?: {
+  synced?: boolean;
+  syncError?: Error;
+  transactions?: ReturnType<typeof makeTransaction>[];
+}) {
   const diffResp = makeDiffResponse({
     transaction: opts?.transactions ?? [],
   });
 
   api = {
-    diff: vi.fn().mockResolvedValue(diffResp),
+    diff: opts?.syncError
+      ? vi.fn().mockRejectedValue(opts.syncError)
+      : vi.fn().mockResolvedValue(diffResp),
     suggest: vi.fn(),
   } as unknown as ZenMoneyAPI;
 
@@ -138,7 +144,7 @@ describe("add_expense", () => {
     expect(getTextContent(result)).toContain("not found");
   });
 
-  it("should error when not synced", async () => {
+  it("should sync automatically when not synced yet", async () => {
     await setup({ synced: false });
 
     const result = await callTool("add_expense", {
@@ -147,8 +153,22 @@ describe("add_expense", () => {
       date: "2026-03-20",
     });
 
+    expect(result.isError).toBeFalsy();
+    expect(state.isSynced).toBe(true);
+    expect(getTextContent(result)).toContain("Expense added");
+  });
+
+  it("should report an error when the automatic sync fails", async () => {
+    await setup({ synced: false, syncError: new Error("Auth failed") });
+
+    const result = await callTool("add_expense", {
+      account: "Checking",
+      amount: 10,
+      date: "2026-03-20",
+    });
+
     expect(result.isError).toBe(true);
-    expect(getTextContent(result)).toContain("not synced");
+    expect(getTextContent(result)).toContain("Automatic sync failed");
   });
 
   it("should handle API errors", async () => {
@@ -234,14 +254,15 @@ describe("add_income", () => {
     expect(result.isError).toBe(true);
   });
 
-  it("should error when not synced", async () => {
+  it("should sync automatically when not synced yet", async () => {
     await setup({ synced: false });
     const result = await callTool("add_income", {
       account: "Checking",
       amount: 100,
       date: "2026-03-01",
     });
-    expect(result.isError).toBe(true);
+    expect(result.isError).toBeFalsy();
+    expect(getTextContent(result)).toContain("Income added");
   });
 });
 
@@ -391,7 +412,7 @@ describe("add_transfer", () => {
     expect(getTextContent(result)).toContain("Destination account");
   });
 
-  it("should error when not synced", async () => {
+  it("should sync automatically when not synced yet", async () => {
     await setup({ synced: false });
     const result = await callTool("add_transfer", {
       from_account: "Checking",
@@ -399,7 +420,8 @@ describe("add_transfer", () => {
       amount: 100,
       date: "2026-03-20",
     });
-    expect(result.isError).toBe(true);
+    expect(result.isError).toBeFalsy();
+    expect(getTextContent(result)).toContain("Transfer added");
   });
 
   it("should handle same-currency transfer with income_amount (both provided)", async () => {
@@ -602,10 +624,11 @@ describe("list_transactions", () => {
     expect(getTextContent(result)).toContain("No transactions found");
   });
 
-  it("should error when not synced", async () => {
+  it("should sync automatically when not synced yet", async () => {
     await setup({ synced: false });
     const result = await callTool("list_transactions", { start_date: "2026-03-01", end_date: "2026-03-31" });
-    expect(result.isError).toBe(true);
+    expect(result.isError).toBeFalsy();
+    expect(state.isSynced).toBe(true);
   });
 
   it("should filter by explicit start_date and end_date range", async () => {

@@ -5,7 +5,7 @@ import type { ZenState } from "../state.js";
 export function registerSyncTools(server: McpServer, state: ZenState) {
   server.tool(
     "sync_data",
-    "Sync data with ZenMoney. Run this first before using other tools. Use force_full=true to re-download everything.",
+    "Sync data with ZenMoney. Other tools sync automatically, so this is only needed to refresh on demand. Use force_full=true to discard the cache and re-download everything.",
     {
       force_full: z
         .boolean()
@@ -15,7 +15,8 @@ export function registerSyncTools(server: McpServer, state: ZenState) {
     },
     async ({ force_full }) => {
       try {
-        const resp = await state.sync(force_full);
+        if (force_full) await state.clearCache();
+        await state.sync(force_full);
         const summary = {
           accounts: state.accounts.length,
           active_accounts: state.getActiveAccounts().length,
@@ -24,6 +25,7 @@ export function registerSyncTools(server: McpServer, state: ZenState) {
           transactions: state.transactions.length,
           currencies: state.instruments.length,
           serverTimestamp: state.serverTimestamp,
+          cache_file: state.cachePath ?? "disabled",
         };
 
         return {

@@ -12,10 +12,12 @@ let server: McpServer;
 let client: Client;
 let state: ZenState;
 
-async function setup(opts?: { synced?: boolean }) {
+async function setup(opts?: { synced?: boolean; syncError?: Error }) {
   const diffResp = makeDiffResponse();
   const api = {
-    diff: vi.fn().mockResolvedValue(diffResp),
+    diff: opts?.syncError
+      ? vi.fn().mockRejectedValue(opts.syncError)
+      : vi.fn().mockResolvedValue(diffResp),
     suggest: vi.fn(),
   } as unknown as ZenMoneyAPI;
 
@@ -71,13 +73,24 @@ describe("list_categories", () => {
     expect(text).toContain("tag-salary");
   });
 
-  it("should error when not synced", async () => {
+  it("should sync automatically when not synced yet", async () => {
     await setup({ synced: false });
     const result = await client.callTool({
       name: "list_categories",
       arguments: {},
     });
+    expect(result.isError).toBeFalsy();
+    expect(getTextContent(result)).toContain("Food");
+  });
+
+  it("should report an error when the automatic sync fails", async () => {
+    await setup({ synced: false, syncError: new Error("Auth failed") });
+    const result = await client.callTool({
+      name: "list_categories",
+      arguments: {},
+    });
     expect(result.isError).toBe(true);
+    expect(getTextContent(result)).toContain("Automatic sync failed");
   });
 });
 
@@ -96,12 +109,13 @@ describe("list_merchants", () => {
     expect(text).toContain("merchant-cafe");
   });
 
-  it("should error when not synced", async () => {
+  it("should sync automatically when not synced yet", async () => {
     await setup({ synced: false });
     const result = await client.callTool({
       name: "list_merchants",
       arguments: {},
     });
-    expect(result.isError).toBe(true);
+    expect(result.isError).toBeFalsy();
+    expect(getTextContent(result)).toContain("Corner Cafe");
   });
 });

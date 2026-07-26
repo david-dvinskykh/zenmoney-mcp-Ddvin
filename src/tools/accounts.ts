@@ -1,11 +1,12 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ZenState } from "../state.js";
+import { ensureSynced } from "./ensure-synced.js";
 
 export function registerAccountTools(server: McpServer, state: ZenState) {
   server.tool(
     "list_accounts",
-    "List all user accounts (wallets, cards, cash). Sync must be done first.",
+    "List all user accounts (wallets, cards, cash). Syncs automatically if needed.",
     {
       include_archived: z
         .boolean()
@@ -14,17 +15,8 @@ export function registerAccountTools(server: McpServer, state: ZenState) {
         .describe("Include archived accounts"),
     },
     async ({ include_archived }) => {
-      if (!state.isSynced) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: "Data not synced yet. Please run sync_data first.",
-            },
-          ],
-          isError: true,
-        };
-      }
+      const syncError = await ensureSynced(state);
+      if (syncError) return syncError;
 
       const accounts = include_archived
         ? state.accounts
