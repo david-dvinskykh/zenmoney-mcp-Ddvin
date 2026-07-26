@@ -16,6 +16,10 @@ export function registerSuggestTools(
     },
     async ({ payee }) => {
       try {
+        // Best effort: state is only used to turn ids into names, so a failed
+        // sync should not block the suggestion itself.
+        await state.ensureSynced().catch(() => {});
+
         const results = await api.suggest([{ payee }]);
         const suggestion = results[0];
 

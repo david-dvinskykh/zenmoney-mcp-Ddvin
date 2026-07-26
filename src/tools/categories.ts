@@ -1,23 +1,15 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ZenState } from "../state.js";
+import { ensureSynced } from "./ensure-synced.js";
 
 export function registerCategoryTools(server: McpServer, state: ZenState) {
   server.tool(
     "list_categories",
-    "List all expense/income categories (tags) with their hierarchy. Sync must be done first.",
+    "List all expense/income categories (tags) with their hierarchy. Syncs automatically if needed.",
     {},
     async () => {
-      if (!state.isSynced) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: "Data not synced yet. Please run sync_data first.",
-            },
-          ],
-          isError: true,
-        };
-      }
+      const syncError = await ensureSynced(state);
+      if (syncError) return syncError;
 
       const hierarchy = state.getTagHierarchy();
       const lines: string[] = [];
@@ -50,20 +42,11 @@ export function registerCategoryTools(server: McpServer, state: ZenState) {
 
   server.tool(
     "list_merchants",
-    "List known merchants/payees. Sync must be done first.",
+    "List known merchants/payees. Syncs automatically if needed.",
     {},
     async () => {
-      if (!state.isSynced) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: "Data not synced yet. Please run sync_data first.",
-            },
-          ],
-          isError: true,
-        };
-      }
+      const syncError = await ensureSynced(state);
+      if (syncError) return syncError;
 
       const lines = state.merchants.map(
         (m) => `- **${m.title}** — id: \`${m.id}\``

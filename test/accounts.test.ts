@@ -12,10 +12,12 @@ let server: McpServer;
 let client: Client;
 let state: ZenState;
 
-async function setup(opts?: { synced?: boolean }) {
+async function setup(opts?: { synced?: boolean; syncError?: Error }) {
   const diffResp = makeDiffResponse();
   const api = {
-    diff: vi.fn().mockResolvedValue(diffResp),
+    diff: opts?.syncError
+      ? vi.fn().mockRejectedValue(opts.syncError)
+      : vi.fn().mockResolvedValue(diffResp),
     suggest: vi.fn(),
   } as unknown as ZenMoneyAPI;
 
@@ -95,13 +97,30 @@ describe("list_accounts", () => {
     expect(text).toContain("acc-euro");
   });
 
-  it("should error when not synced", async () => {
+  it("should sync automatically when not synced yet", async () => {
     await setup({ synced: false });
+    expect(state.isSynced).toBe(false);
+
     const result = await client.callTool({
       name: "list_accounts",
       arguments: {},
     });
+
+    expect(result.isError).toBeFalsy();
+    expect(state.isSynced).toBe(true);
+    expect(getTextContent(result)).toContain("Checking");
+  });
+
+  it("should report an error when the automatic sync fails", async () => {
+    await setup({ synced: false, syncError: new Error("Auth failed") });
+
+    const result = await client.callTool({
+      name: "list_accounts",
+      arguments: {},
+    });
+
     expect(result.isError).toBe(true);
-    expect(getTextContent(result)).toContain("not synced");
+    expect(getTextContent(result)).toContain("Automatic sync failed");
+    expect(getTextContent(result)).toContain("Auth failed");
   });
 });

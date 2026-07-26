@@ -9,9 +9,11 @@ import {
   type User,
   type DiffResponse,
 } from "./api.js";
+import type { StateCache } from "./cache.js";
 
 export class ZenState {
   private api: ZenMoneyAPI;
+  private cache: StateCache | null;
   serverTimestamp = 0;
   accounts: Account[] = [];
   tags: Tag[] = [];
@@ -20,17 +22,116 @@ export class ZenState {
   instruments: Instrument[] = [];
   transactions: Transaction[] = [];
   users: User[] = [];
+  /** Unix seconds of the snapshot currently in memory (0 if never synced). */
+  syncedAt = 0;
+  /** Set when the data came from cache because a live sync failed. */
+  staleReason: string | null = null;
   private synced = false;
+  private restoredFromCache = false;
+  private pendingSync: Promise<void> | null = null;
 
-  constructor(api: ZenMoneyAPI) {
+  constructor(api: ZenMoneyAPI, cache: StateCache | null = null) {
     this.api = api;
+    this.cache = cache;
   }
 
   get isSynced(): boolean {
     return this.synced;
   }
 
+  /** True when the in-memory data was seeded from the on-disk snapshot. */
+  get isFromCache(): boolean {
+    return this.restoredFromCache;
+  }
+
+  get cachePath(): string | null {
+    return this.cache?.path ?? null;
+  }
+
+  /**
+   * Make sure data is available before serving a tool call. Restores the
+   * on-disk snapshot when there is one, then brings it up to date with an
+   * incremental sync. Concurrent callers share a single in-flight attempt.
+   */
+  async ensureSynced(): Promise<void> {
+    if (this.synced) return;
+    if (!this.pendingSync) {
+      this.pendingSync = this.initialSync().finally(() => {
+        this.pendingSync = null;
+      });
+    }
+    return this.pendingSync;
+  }
+
+  private async initialSync(): Promise<void> {
+    const restored = await this.restoreFromCache();
+
+    if (restored && this.isCacheFresh()) {
+      this.synced = true;
+      return;
+    }
+
+    try {
+      await this.sync();
+    } catch (error) {
+      if (!restored) throw error;
+      // Serve the cached snapshot rather than failing outright — the data is
+      // usable, just possibly behind.
+      this.synced = true;
+      this.staleReason =
+        error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  /** Seed state from the on-disk snapshot. Returns false on a cache miss. */
+  async restoreFromCache(): Promise<boolean> {
+    if (!this.cache) return false;
+
+    const data = await this.cache.load();
+    if (!data) return false;
+
+    this.serverTimestamp = data.serverTimestamp;
+    this.accounts = data.accounts ?? [];
+    this.tags = data.tags ?? [];
+    this.merchants = data.merchants ?? [];
+    this.companies = data.companies ?? [];
+    this.instruments = data.instruments ?? [];
+    this.transactions = data.transactions ?? [];
+    this.users = data.users ?? [];
+    this.syncedAt = data.savedAt;
+    this.restoredFromCache = true;
+    return true;
+  }
+
+  /**
+   * Skip the network entirely while the snapshot is younger than
+   * ZENMONEY_CACHE_TTL seconds. Defaults to 0 — always revalidate, which is
+   * cheap because the sync is incremental from the cached timestamp.
+   */
+  private isCacheFresh(): boolean {
+    const ttl = Number(process.env.ZENMONEY_CACHE_TTL ?? 0);
+    if (!Number.isFinite(ttl) || ttl <= 0) return false;
+    return Math.floor(Date.now() / 1000) - this.syncedAt < ttl;
+  }
+
   async sync(forceFull = false): Promise<DiffResponse> {
+    if (forceFull) {
+      // Drop everything so a full re-download cannot leave stale entities
+      // behind (the merge is additive and would otherwise keep them).
+      this.accounts = [];
+      this.tags = [];
+      this.merchants = [];
+      this.companies = [];
+      this.instruments = [];
+      this.transactions = [];
+      this.users = [];
+      this.restoredFromCache = false;
+    } else if (!this.synced && !this.restoredFromCache) {
+      // Fresh process: pick up where the last one left off so this sync is
+      // incremental instead of a full re-download.
+      await this.restoreFromCache();
+    }
+
     const timestamp = forceFull ? 0 : this.serverTimestamp;
 
     const req: any = {
@@ -53,7 +154,54 @@ export class ZenState {
     const resp = await this.api.diff(req);
     this.applyDiff(resp);
     this.synced = true;
+    this.syncedAt = Math.floor(Date.now() / 1000);
+    this.staleReason = null;
+    await this.persist();
     return resp;
+  }
+
+  /**
+   * Record a transaction that was just pushed to ZenMoney so the local
+   * snapshot (memory and disk) stays consistent without another round trip.
+   */
+  async applyLocalTransaction(
+    transaction: Transaction,
+    serverTimestamp: number
+  ): Promise<void> {
+    this.serverTimestamp = serverTimestamp;
+    this.transactions.push(transaction);
+    await this.persist();
+  }
+
+  /** Drop the on-disk snapshot (used by force_full re-downloads). */
+  async clearCache(): Promise<void> {
+    if (!this.cache) return;
+    try {
+      await this.cache.clear();
+    } catch {
+      // Best effort — the next successful sync overwrites it anyway.
+    }
+  }
+
+  /** Write the current snapshot to disk. Never throws — caching is best effort. */
+  async persist(): Promise<void> {
+    if (!this.cache) return;
+    try {
+      await this.cache.save({
+        serverTimestamp: this.serverTimestamp,
+        accounts: this.accounts,
+        tags: this.tags,
+        merchants: this.merchants,
+        companies: this.companies,
+        instruments: this.instruments,
+        transactions: this.transactions,
+        users: this.users,
+      });
+    } catch (error) {
+      console.error(
+        `Failed to write ZenMoney cache: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
   }
 
   private applyDiff(resp: DiffResponse): void {

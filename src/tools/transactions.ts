@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ZenMoneyAPI } from "../api.js";
 import type { ZenState } from "../state.js";
+import { ensureSynced } from "./ensure-synced.js";
 
 export function registerTransactionTools(
   server: McpServer,
@@ -28,17 +29,8 @@ export function registerTransactionTools(
       comment: z.string().optional().describe("Transaction comment"),
     },
     async ({ account, amount, date, category, payee, comment }) => {
-      if (!state.isSynced) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: "Data not synced yet. Please run sync_data first.",
-            },
-          ],
-          isError: true,
-        };
-      }
+      const syncError = await ensureSynced(state);
+      if (syncError) return syncError;
 
       const acc = resolveAccount(state, account);
       if (!acc) {
@@ -58,7 +50,7 @@ export function registerTransactionTools(
       if (!user) {
         return {
           content: [
-            { type: "text" as const, text: "User not found. Run sync_data first." },
+            { type: "text" as const, text: "User not found. Try sync_data with force_full=true." },
           ],
           isError: true,
         };
@@ -107,8 +99,7 @@ export function registerTransactionTools(
           transaction: [transaction],
         });
 
-        state.serverTimestamp = resp.serverTimestamp;
-        state.transactions.push(transaction);
+        await state.applyLocalTransaction(transaction, resp.serverTimestamp);
 
         const instr = state.getInstrument(instrumentId);
         const currency = instr?.shortTitle ?? "";
@@ -152,17 +143,8 @@ export function registerTransactionTools(
       comment: z.string().optional().describe("Transaction comment"),
     },
     async ({ account, amount, date, category, payee, comment }) => {
-      if (!state.isSynced) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: "Data not synced yet. Please run sync_data first.",
-            },
-          ],
-          isError: true,
-        };
-      }
+      const syncError = await ensureSynced(state);
+      if (syncError) return syncError;
 
       const acc = resolveAccount(state, account);
       if (!acc) {
@@ -182,7 +164,7 @@ export function registerTransactionTools(
       if (!user) {
         return {
           content: [
-            { type: "text" as const, text: "User not found. Run sync_data first." },
+            { type: "text" as const, text: "User not found. Try sync_data with force_full=true." },
           ],
           isError: true,
         };
@@ -231,8 +213,7 @@ export function registerTransactionTools(
           transaction: [transaction],
         });
 
-        state.serverTimestamp = resp.serverTimestamp;
-        state.transactions.push(transaction);
+        await state.applyLocalTransaction(transaction, resp.serverTimestamp);
 
         const instr = state.getInstrument(instrumentId);
         const currency = instr?.shortTitle ?? "";
@@ -272,17 +253,8 @@ export function registerTransactionTools(
       comment: z.string().optional().describe("Transfer comment"),
     },
     async ({ from_account, to_account, amount, outcome_amount, income_amount, date, comment }) => {
-      if (!state.isSynced) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: "Data not synced yet. Please run sync_data first.",
-            },
-          ],
-          isError: true,
-        };
-      }
+      const syncError = await ensureSynced(state);
+      if (syncError) return syncError;
 
       const fromAcc = resolveAccount(state, from_account);
       const toAcc = resolveAccount(state, to_account);
@@ -314,7 +286,7 @@ export function registerTransactionTools(
       if (!user) {
         return {
           content: [
-            { type: "text" as const, text: "User not found. Run sync_data first." },
+            { type: "text" as const, text: "User not found. Try sync_data with force_full=true." },
           ],
           isError: true,
         };
@@ -396,8 +368,7 @@ export function registerTransactionTools(
           transaction: [transaction],
         });
 
-        state.serverTimestamp = resp.serverTimestamp;
-        state.transactions.push(transaction);
+        await state.applyLocalTransaction(transaction, resp.serverTimestamp);
 
         const fromInstr = state.getInstrument(outcomeInstrument);
         const toInstr = state.getInstrument(incomeInstrument);
@@ -429,7 +400,7 @@ export function registerTransactionTools(
 
   server.tool(
     "list_transactions",
-    "List transactions. By default returns the last 30 days; pass start_date/end_date for an arbitrary period (e.g. Jan 1–31). Sync must be done first.",
+    "List transactions. By default returns the last 30 days; pass start_date/end_date for an arbitrary period (e.g. Jan 1–31). Syncs automatically if needed.",
     {
       days: z
         .number()
@@ -461,17 +432,8 @@ export function registerTransactionTools(
         .describe("Max number of transactions to return (default 50)"),
     },
     async ({ days, start_date, end_date, account, category, limit }) => {
-      if (!state.isSynced) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: "Data not synced yet. Please run sync_data first.",
-            },
-          ],
-          isError: true,
-        };
-      }
+      const syncError = await ensureSynced(state);
+      if (syncError) return syncError;
 
       let lowerBound: string;
       let upperBound: string | null;
