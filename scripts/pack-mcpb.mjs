@@ -4,7 +4,7 @@
 //   1. npm run build         (compile TS -> build/)
 //   2. copy manifest.json, package.json, package-lock.json, build/, README, LICENSE -> .mcpb-stage/
 //   3. npm ci --omit=dev --ignore-scripts --no-audit --no-fund in staging
-//   4. mcpb pack .mcpb-stage dist/zenmoney-mcp-<version>.mcpb (using pinned dev dep)
+//   4. mcpb pack .mcpb-stage dist/<name>-<version>.mcpb (using pinned dev dep)
 
 import { execSync } from "node:child_process";
 import { cpSync, mkdirSync, readFileSync, rmSync, existsSync } from "node:fs";
@@ -15,7 +15,7 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const stageDir = join(repoRoot, ".mcpb-stage");
 const distDir = join(repoRoot, "dist");
 const pkg = JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8"));
-const outFile = join(distDir, `zenmoney-mcp-${pkg.version}.mcpb`);
+const outFile = join(distDir, `${pkg.name}-${pkg.version}.mcpb`);
 
 function run(cmd, opts = {}) {
   console.log(`\n$ ${cmd}`);

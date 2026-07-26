@@ -1,17 +1,17 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.a-tarasoff/zenmoney-mcp",
+  "name": "io.github.david-dvinskykh/zenmoney-mcp-ddvin",
   "description": "MCP server for ZenMoney personal finance app",
   "repository": {
-    "url": "https://github.com/artarasov/zenmoney-mcp",
+    "url": "https://github.com/david-dvinskykh/zenmoney-mcp-Ddvin",
     "source": "github"
   },
-  "version": "0.3.1",
+  "version": "0.4.0",
   "packages": [
     {
       "registryType": "npm",
-      "identifier": "zenmoney-mcp",
-      "version": "0.3.1",
+      "identifier": "zenmoney-mcp-ddvin",
+      "version": "0.4.0",
       "transport": {
         "type": "stdio"
       },

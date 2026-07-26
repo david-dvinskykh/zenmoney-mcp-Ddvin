@@ -28,8 +28,8 @@ const cache =
 const state = new ZenState(api, cache);
 
 const server = new McpServer({
-  name: "zenmoney-mcp",
-  version: "0.3.1",
+  name: "zenmoney-mcp-ddvin",
+  version: "0.4.0",
 });
 
 registerSyncTools(server, state);

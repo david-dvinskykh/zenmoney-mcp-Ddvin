@@ -1,4 +1,4 @@
-# zenmoney-mcp
+# zenmoney-mcp-ddvin
 
 MCP server for [ZenMoney](https://zenmoney.ru) — access your personal finance data from any MCP-compatible AI client (Claude Desktop, Cursor, etc.).
 
@@ -29,19 +29,11 @@ previous one left off instead of re-downloading everything. See
 
 ## Quick start
 
-No cloning or building needed — just add to your MCP client config.
-
-### Run straight from this repo with npx (no npm publish)
-
-`npx` can install and run a package directly from a Git repository, so this
-server can be used before (or without) publishing it to the npm registry:
+No cloning or building needed — the server is published to npm:
 
 ```bash
-npx -y github:david-dvinskykh/zenmoney-mcp-Ddvin
+npx -y zenmoney-mcp-ddvin
 ```
-
-npm clones the repo, installs dependencies, runs the `prepare` script (which
-compiles TypeScript to `build/`), and starts the server — all from the checkout.
 
 Use it in any MCP client config:
 
@@ -50,7 +42,7 @@ Use it in any MCP client config:
   "mcpServers": {
     "zenmoney": {
       "command": "npx",
-      "args": ["-y", "github:david-dvinskykh/zenmoney-mcp-Ddvin"],
+      "args": ["-y", "zenmoney-mcp-ddvin"],
       "env": {
         "ZENMONEY_TOKEN": "your_token_here"
       }
@@ -59,17 +51,20 @@ Use it in any MCP client config:
 }
 ```
 
-Pin to a branch, tag, or commit by appending `#<ref>`:
+### Running unreleased changes from Git
+
+`npx` can also install straight from the repository, which is useful for testing
+a branch before it is released:
 
 ```bash
-npx -y github:david-dvinskykh/zenmoney-mcp-Ddvin#main
+npx -y github:david-dvinskykh/zenmoney-mcp-Ddvin          # default branch
+npx -y github:david-dvinskykh/zenmoney-mcp-Ddvin#main     # pin a branch/tag/commit
+npx -y git+ssh://git@github.com/david-dvinskykh/zenmoney-mcp-Ddvin.git  # SSH auth
 ```
 
-Private repo, or SSH auth preferred? Use the full Git URL form instead:
-
-```bash
-npx -y git+ssh://git@github.com/david-dvinskykh/zenmoney-mcp-Ddvin.git
-```
+npm clones the repo, installs dependencies, runs the `prepare` script (which
+compiles TypeScript to `build/`), and starts the server — all from the checkout.
+Expect the first run to take a while; the published package starts far faster.
 
 > npm caches the resolved commit for a git dependency. After pushing changes,
 > re-run with an explicit `#<ref>` (or `npm cache clean --force`) to pick them up.
@@ -82,9 +77,13 @@ In MetaMCP, add a new **STDIO** server:
 |-------|-------|
 | Name | `zenmoney` |
 | Type | `STDIO` |
-| Command | `npx` |
-| Args | `-y github:david-dvinskykh/zenmoney-mcp-Ddvin` |
+| Command | `npx` — just the binary, no flags |
+| Args | `-y` and `zenmoney-mcp-ddvin` as two separate entries |
 | Env | `ZENMONEY_TOKEN=your_token_here` |
+
+Keep the flags out of the Command field. If MetaMCP spawns a bare shell instead
+of the server, the JSON-RPC handshake ends up on the shell's stdin and you get
+`sh: 1: {method:initialize,...}: not found`.
 
 Equivalent JSON, if you configure MetaMCP by importing a config:
 
@@ -94,7 +93,7 @@ Equivalent JSON, if you configure MetaMCP by importing a config:
     "zenmoney": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "github:david-dvinskykh/zenmoney-mcp-Ddvin"],
+      "args": ["-y", "zenmoney-mcp-ddvin"],
       "env": {
         "ZENMONEY_TOKEN": "your_token_here"
       }
@@ -116,7 +115,7 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
   "mcpServers": {
     "zenmoney": {
       "command": "npx",
-      "args": ["-y", "zenmoney-mcp"],
+      "args": ["-y", "zenmoney-mcp-ddvin"],
       "env": {
         "ZENMONEY_TOKEN": "your_token_here"
       }
@@ -134,7 +133,7 @@ Add to `.cursor/mcp.json`:
   "mcpServers": {
     "zenmoney": {
       "command": "npx",
-      "args": ["-y", "zenmoney-mcp"],
+      "args": ["-y", "zenmoney-mcp-ddvin"],
       "env": {
         "ZENMONEY_TOKEN": "your_token_here"
       }
@@ -146,12 +145,12 @@ Add to `.cursor/mcp.json`:
 ### Claude Code
 
 ```bash
-claude mcp add zenmoney -- npx -y zenmoney-mcp
+claude mcp add zenmoney -- npx -y zenmoney-mcp-ddvin
 ```
 
 Replace `your_token_here` with your token from [zerro.app/token](https://zerro.app/token).
-In any of the examples above, `zenmoney-mcp` (the published package) can be swapped
-for `github:david-dvinskykh/zenmoney-mcp-Ddvin` to run this repo directly.
+In any of the examples above, `zenmoney-mcp-ddvin` can be swapped for
+`github:david-dvinskykh/zenmoney-mcp-Ddvin` to run unreleased code from the repo.
 
 ### Claude Desktop (MCPB bundle)
 
@@ -160,7 +159,7 @@ If you prefer a one-click install without editing JSON, build a `.mcpb` bundle a
 ```bash
 npm install
 npm run pack:mcpb
-# → dist/zenmoney-mcp-<version>.mcpb
+# → dist/zenmoney-mcp-ddvin-<version>.mcpb
 ```
 
 On install, Claude Desktop will prompt for your ZenMoney token (stored in the OS keychain).
@@ -168,8 +167,8 @@ On install, Claude Desktop will prompt for your ZenMoney token (stored in the OS
 ### From source
 
 ```bash
-git clone https://github.com/a-tarasoff/zenmoney-mcp.git
-cd zenmoney-mcp
+git clone https://github.com/david-dvinskykh/zenmoney-mcp-Ddvin.git
+cd zenmoney-mcp-Ddvin
 npm install
 npm run build
 cp .env.example .env  # add your token
@@ -221,9 +220,39 @@ everything — use it if the cached data ever looks wrong.
 | `ZENMONEY_CACHE_TTL` | `0` | Seconds a snapshot is served without revalidating. `0` always runs an incremental sync (cheap, and always fresh) |
 | `ZENMONEY_NO_CACHE` | — | Set to `1` to disable on-disk caching entirely |
 
+## Releasing
+
+Publishing is handled by [`.github/workflows/publish.yml`](.github/workflows/publish.yml),
+which runs the test suite and then publishes to npm with
+[provenance](https://docs.npmjs.com/generating-provenance-statements).
+
+One-time setup: create an **Automation** access token on npmjs.com and add it to
+the repository as the `NPM_TOKEN` secret (Settings → Secrets and variables →
+Actions).
+
+To cut a release, bump the version in **`package.json`, `manifest.json`,
+`server.json`, and the `McpServer` block in `src/index.ts`** (they are kept in
+sync by hand), then:
+
+```bash
+git commit -am "Release v0.4.0"
+git tag v0.4.0
+git push origin main --tags
+```
+
+Pushing the tag triggers the workflow. It refuses to publish if the tag doesn't
+match `package.json`, or if that version is already on npm. There is also a
+manual **Run workflow** button with a `dry_run` option that packs and validates
+without publishing.
+
 ## Contributing
 
 PRs welcome! Feel free to open issues for bugs or feature requests.
+
+## Credits
+
+A fork of [zenmoney-mcp](https://github.com/artarasov/zenmoney-mcp) by Artem
+Tarasov, published to npm as `zenmoney-mcp-ddvin`.
 
 ## License
 
