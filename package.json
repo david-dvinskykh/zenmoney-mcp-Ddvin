@@ -1,9 +1,9 @@
 {
-  "name": "zenmoney-mcp",
-  "version": "0.3.1",
+  "name": "zenmoney-mcp-ddvin",
+  "version": "0.4.0",
   "type": "module",
   "bin": {
-    "zenmoney-mcp": "build/index.js"
+    "zenmoney-mcp-ddvin": "build/index.js"
   },
   "files": [
     "build",
@@ -18,8 +18,8 @@
     "prepublishOnly": "npm run build",
     "pack:mcpb": "node scripts/pack-mcpb.mjs"
   },
-  "mcpName": "io.github.a-tarasoff/zenmoney-mcp",
-  "description": "MCP server for ZenMoney personal finance app",
+  "mcpName": "io.github.david-dvinskykh/zenmoney-mcp-ddvin",
+  "description": "MCP server for ZenMoney personal finance app, with auto-sync and on-disk caching",
   "main": "build/index.js",
   "keywords": [
     "mcp",
@@ -33,7 +33,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/artarasov/zenmoney-mcp.git"
+    "url": "git+https://github.com/david-dvinskykh/zenmoney-mcp-Ddvin.git"
   },
   "engines": {
     "node": ">=18"
@@ -49,5 +49,12 @@
     "@vitest/coverage-v8": "^4.1.2",
     "typescript": "^5.9.3",
     "vitest": "^4.1.2"
+  },
+  "homepage": "https://github.com/david-dvinskykh/zenmoney-mcp-Ddvin#readme",
+  "bugs": {
+    "url": "https://github.com/david-dvinskykh/zenmoney-mcp-Ddvin/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
