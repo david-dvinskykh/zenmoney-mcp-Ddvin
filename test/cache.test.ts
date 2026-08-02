@@ -183,6 +183,28 @@ describe("ZenState persistence", () => {
     );
   });
 
+  it("should drop deleted transactions found in a snapshot", async () => {
+    const cache = new StateCache("t", dir);
+    await cache.save({
+      serverTimestamp: 1700000000,
+      accounts: [],
+      tags: [],
+      merchants: [],
+      companies: [],
+      instruments: [],
+      transactions: [
+        makeTransaction({ id: "tx-live" }),
+        makeTransaction({ id: "tx-gone", deleted: true }),
+      ],
+      users: [],
+    });
+
+    const state = new ZenState(createApi(), new StateCache("t", dir));
+    await state.restoreFromCache();
+
+    expect(state.transactions.map((t) => t.id)).toEqual(["tx-live"]);
+  });
+
   it("should not share snapshots between tokens", async () => {
     const stateA = new ZenState(createApi(), new StateCache("token-a", dir));
     await stateA.sync();

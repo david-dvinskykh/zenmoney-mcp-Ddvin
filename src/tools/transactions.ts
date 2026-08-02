@@ -460,7 +460,10 @@ export function registerTransactionTools(
       }
 
       let filtered = state.transactions.filter(
-        (t) => t.date >= lowerBound && (upperBound === null || t.date <= upperBound)
+        (t) =>
+          !t.deleted &&
+          t.date >= lowerBound &&
+          (upperBound === null || t.date <= upperBound)
       );
 
       if (account) {

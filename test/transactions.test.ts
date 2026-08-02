@@ -586,6 +586,53 @@ describe("list_transactions", () => {
     expect(text).toContain("25");
   });
 
+  it("should not list deleted transactions held in state", async () => {
+    await setup({
+      transactions: [makeTransaction({ id: "tx-live", outcome: 10, date: "2026-03-20" })],
+    });
+    // Simulate a snapshot/state that still carries a soft-deleted transaction.
+    state.transactions.push(
+      makeTransaction({ id: "tx-gone", outcome: 999, date: "2026-03-21", deleted: true })
+    );
+
+    const result = await callTool("list_transactions", {
+      start_date: "2026-03-01",
+      end_date: "2026-03-31",
+    });
+
+    const text = getTextContent(result);
+    expect(text).toContain("Transactions (1)");
+    expect(text).not.toContain("999");
+  });
+
+  it("should not list transactions deleted since the last sync", async () => {
+    const tx = makeTransaction({ id: "tx-doomed", outcome: 777, date: "2026-03-20" });
+    await setup({ transactions: [tx] });
+
+    // Incremental sync reports it as deleted.
+    vi.mocked(api.diff).mockResolvedValue(
+      makeDiffResponse({
+        serverTimestamp: 1700000002,
+        transaction: [makeTransaction({ id: "tx-doomed", deleted: true })],
+        account: [],
+        tag: [],
+        instrument: [],
+        merchant: [],
+        company: [],
+        user: [],
+        deletion: [],
+      })
+    );
+    await state.sync();
+
+    const result = await callTool("list_transactions", {
+      start_date: "2026-03-01",
+      end_date: "2026-03-31",
+    });
+
+    expect(getTextContent(result)).not.toContain("777");
+  });
+
   it("should filter by date range", async () => {
     const txs = [
       makeTransaction({ id: "tx-recent", outcome: 10, date: "2026-03-25" }),
