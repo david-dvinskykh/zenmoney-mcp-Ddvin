@@ -96,7 +96,9 @@ export class ZenState {
     this.merchants = data.merchants ?? [];
     this.companies = data.companies ?? [];
     this.instruments = data.instruments ?? [];
-    this.transactions = data.transactions ?? [];
+    // A snapshot should never hold deleted transactions, but drop any that a
+    // previous version (or a partial write) left behind rather than serving them.
+    this.transactions = (data.transactions ?? []).filter((t) => !t.deleted);
     this.users = data.users ?? [];
     this.syncedAt = data.savedAt;
     this.restoredFromCache = true;
