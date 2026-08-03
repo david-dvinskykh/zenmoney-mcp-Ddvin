@@ -217,6 +217,158 @@ describe("add_expense", () => {
   });
 });
 
+// A write is a diff too: the response reports everything that changed since our
+// last sync. Dropping it while taking its serverTimestamp would lose those
+// changes for good, deletions included.
+describe("write responses carry the diff since the last sync", () => {
+  it("should apply a deletion returned by the write response", async () => {
+    await setup({
+      transactions: [
+        makeTransaction({ id: "tx-doomed", outcome: 777, date: "2026-03-20" }),
+      ],
+    });
+
+    vi.mocked(api.diff).mockResolvedValue(
+      makeDiffResponse({
+        serverTimestamp: 1700000002,
+        deletion: [
+          {
+            id: "tx-doomed",
+            object: "transaction",
+            stamp: 1700000001,
+            user: 1,
+          },
+        ],
+      })
+    );
+
+    await callTool("add_expense", {
+      account: "Checking",
+      amount: 10,
+      date: "2026-03-21",
+    });
+
+    expect(state.transactions.map((t) => t.id)).not.toContain("tx-doomed");
+
+    const result = await callTool("list_transactions", {
+      start_date: "2026-03-01",
+      end_date: "2026-03-31",
+    });
+    expect(getTextContent(result)).not.toContain("777");
+  });
+
+  it("should drop a transaction the write response marks deleted", async () => {
+    await setup({
+      transactions: [
+        makeTransaction({ id: "tx-doomed", income: 777, date: "2026-03-20" }),
+      ],
+    });
+
+    vi.mocked(api.diff).mockResolvedValue(
+      makeDiffResponse({
+        serverTimestamp: 1700000002,
+        transaction: [makeTransaction({ id: "tx-doomed", deleted: true })],
+      })
+    );
+
+    await callTool("add_income", {
+      account: "Checking",
+      amount: 10,
+      date: "2026-03-21",
+    });
+
+    expect(state.transactions.map((t) => t.id)).not.toContain("tx-doomed");
+
+    const result = await callTool("list_transactions", {
+      start_date: "2026-03-01",
+      end_date: "2026-03-31",
+    });
+    expect(getTextContent(result)).not.toContain("777");
+  });
+
+  it("should keep the deletion applied across the next incremental sync", async () => {
+    await setup({
+      transactions: [
+        makeTransaction({ id: "tx-doomed", outcome: 777, date: "2026-03-20" }),
+      ],
+    });
+
+    vi.mocked(api.diff).mockResolvedValue(
+      makeDiffResponse({
+        serverTimestamp: 1700000002,
+        deletion: [
+          {
+            id: "tx-doomed",
+            object: "transaction",
+            stamp: 1700000001,
+            user: 1,
+          },
+        ],
+      })
+    );
+    await callTool("add_transfer", {
+      from_account: "Checking",
+      to_account: "Savings",
+      amount: 100,
+      date: "2026-03-21",
+    });
+
+    // The server has nothing new to report from the advanced timestamp on.
+    vi.mocked(api.diff).mockResolvedValue(
+      makeDiffResponse({ serverTimestamp: 1700000003 })
+    );
+    await state.sync();
+
+    expect(state.transactions.map((t) => t.id)).not.toContain("tx-doomed");
+  });
+
+  it("should still record the new transaction when nothing else changed", async () => {
+    await setup({ transactions: [] });
+
+    const result = await callTool("add_expense", {
+      account: "Checking",
+      amount: 10,
+      date: "2026-03-21",
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(state.transactions).toHaveLength(1);
+    expect(state.transactions[0].outcome).toBe(10);
+  });
+
+  it("should let the server's echo of the new transaction win", async () => {
+    await setup({ transactions: [] });
+
+    // The server normalizes what we pushed and echoes it back.
+    let pushedId = "";
+    vi.mocked(api.diff).mockImplementation(async (req: any) => {
+      pushedId = req.transaction[0].id;
+      return makeDiffResponse({
+        serverTimestamp: 1700000002,
+        transaction: [
+          makeTransaction({
+            id: pushedId,
+            outcome: 10,
+            payee: "Normalized Payee",
+            date: "2026-03-21",
+          }),
+        ],
+      });
+    });
+
+    await callTool("add_expense", {
+      account: "Checking",
+      amount: 10,
+      date: "2026-03-21",
+      payee: "coffee shop",
+    });
+
+    expect(state.transactions).toHaveLength(1);
+    expect(state.transactions[0].id).toBe(pushedId);
+    expect(state.transactions[0].payee).toBe("Normalized Payee");
+  });
+});
+
 describe("add_income", () => {
   beforeEach(() => setup());
 

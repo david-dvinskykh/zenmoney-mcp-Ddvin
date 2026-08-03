@@ -99,7 +99,7 @@ export function registerTransactionTools(
           transaction: [transaction],
         });
 
-        await state.applyLocalTransaction(transaction, resp.serverTimestamp);
+        await state.applyLocalTransaction(transaction, resp);
 
         const instr = state.getInstrument(instrumentId);
         const currency = instr?.shortTitle ?? "";
@@ -213,7 +213,7 @@ export function registerTransactionTools(
           transaction: [transaction],
         });
 
-        await state.applyLocalTransaction(transaction, resp.serverTimestamp);
+        await state.applyLocalTransaction(transaction, resp);
 
         const instr = state.getInstrument(instrumentId);
         const currency = instr?.shortTitle ?? "";
@@ -368,7 +368,7 @@ export function registerTransactionTools(
           transaction: [transaction],
         });
 
-        await state.applyLocalTransaction(transaction, resp.serverTimestamp);
+        await state.applyLocalTransaction(transaction, resp);
 
         const fromInstr = state.getInstrument(outcomeInstrument);
         const toInstr = state.getInstrument(incomeInstrument);

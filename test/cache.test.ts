@@ -219,7 +219,10 @@ describe("ZenState persistence", () => {
     await state.sync();
 
     const tx = makeTransaction({ id: "tx-local" });
-    await state.applyLocalTransaction(tx, 1700000123);
+    await state.applyLocalTransaction(
+      tx,
+      makeDiffResponse({ serverTimestamp: 1700000123 })
+    );
 
     const loaded = await cache.load();
     expect(loaded?.serverTimestamp).toBe(1700000123);

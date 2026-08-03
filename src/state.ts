@@ -165,13 +165,22 @@ export class ZenState {
   /**
    * Record a transaction that was just pushed to ZenMoney so the local
    * snapshot (memory and disk) stays consistent without another round trip.
+   *
+   * The write response is itself a diff since our last serverTimestamp, so it
+   * also carries everything that changed elsewhere in the meantime, deletions
+   * included. It has to be applied, not just read for its timestamp: advancing
+   * the timestamp past a deletion we never applied strands the deleted
+   * transaction in state, and no later incremental sync reports it again.
    */
   async applyLocalTransaction(
     transaction: Transaction,
-    serverTimestamp: number
+    resp: DiffResponse
   ): Promise<void> {
-    this.serverTimestamp = serverTimestamp;
+    // Optimistic copy first so the server's view of it wins — an echo replaces
+    // it, a deletion from another client removes it.
+    this.transactions = this.transactions.filter((t) => t.id !== transaction.id);
     this.transactions.push(transaction);
+    this.applyDiff(resp);
     await this.persist();
   }
 
