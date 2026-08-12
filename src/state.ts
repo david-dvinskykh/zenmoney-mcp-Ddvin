@@ -9,6 +9,8 @@ import {
   type User,
   type DiffResponse,
   type Deletion,
+  type Reminder,
+  type ReminderMarker,
 } from "./api.js";
 import type { StateCache } from "./cache.js";
 
@@ -23,6 +25,8 @@ export class ZenState {
   instruments: Instrument[] = [];
   transactions: Transaction[] = [];
   users: User[] = [];
+  reminders: Reminder[] = [];
+  reminderMarkers: ReminderMarker[] = [];
   /** Unix seconds of the snapshot currently in memory (0 if never synced). */
   syncedAt = 0;
   /** Set when the data came from cache because a live sync failed. */
@@ -101,6 +105,8 @@ export class ZenState {
     // previous version (or a partial write) left behind rather than serving them.
     this.transactions = (data.transactions ?? []).filter((t) => !t.deleted);
     this.users = data.users ?? [];
+    this.reminders = data.reminders ?? [];
+    this.reminderMarkers = data.reminderMarkers ?? [];
     this.syncedAt = data.savedAt;
     this.restoredFromCache = true;
     return true;
@@ -128,6 +134,8 @@ export class ZenState {
       this.instruments = [];
       this.transactions = [];
       this.users = [];
+      this.reminders = [];
+      this.reminderMarkers = [];
       this.restoredFromCache = false;
     } else if (!this.synced && !this.restoredFromCache) {
       // Fresh process: pick up where the last one left off so this sync is
@@ -149,6 +157,8 @@ export class ZenState {
         "account",
         "tag",
         "merchant",
+        "reminder",
+        "reminderMarker",
         "transaction",
         "user",
       ];
@@ -224,6 +234,8 @@ export class ZenState {
         instruments: this.instruments,
         transactions: this.transactions,
         users: this.users,
+        reminders: this.reminders,
+        reminderMarkers: this.reminderMarkers,
       });
     } catch (error) {
       console.error(
@@ -240,6 +252,8 @@ export class ZenState {
     this.mergeEntities("merchants", resp.merchant, (e) => e.id);
     this.mergeEntities("companies", resp.company, (e) => e.id);
     this.mergeEntities("users", resp.user, (e) => e.id);
+    this.mergeEntities("reminders", resp.reminder, (e) => e.id);
+    this.mergeEntities("reminderMarkers", resp.reminderMarker, (e) => e.id);
     this.mergeTransactions(resp.transaction);
 
     if (resp.deletion) {
@@ -313,6 +327,17 @@ export class ZenState {
         this.transactions = this.transactions.map((t) =>
           t.merchant === id ? { ...t, merchant: null } : t
         );
+        break;
+      case "reminder":
+        this.reminders = this.reminders.filter((r) => r.id !== id);
+        // The series goes with its template: ZenMoney drops the occurrences
+        // too, so keeping them would leave planned entries with no reminder.
+        this.reminderMarkers = this.reminderMarkers.filter(
+          (m) => m.reminder !== id
+        );
+        break;
+      case "reminderMarker":
+        this.reminderMarkers = this.reminderMarkers.filter((m) => m.id !== id);
         break;
     }
   }

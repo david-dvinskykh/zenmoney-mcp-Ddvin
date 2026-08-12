@@ -7,12 +7,17 @@ import type {
   Company,
   Instrument,
   Merchant,
+  Reminder,
+  ReminderMarker,
   Tag,
   Transaction,
   User,
 } from "./api.js";
 
-export const CACHE_VERSION = 1;
+// 2: reminders and their markers joined the snapshot. A version 1 file has
+// none of them, and an incremental sync from its timestamp would never report
+// the ones that already exist, so old snapshots are dropped rather than read.
+export const CACHE_VERSION = 2;
 
 export interface CacheData {
   version: number;
@@ -26,6 +31,8 @@ export interface CacheData {
   instruments: Instrument[];
   transactions: Transaction[];
   users: User[];
+  reminders: Reminder[];
+  reminderMarkers: ReminderMarker[];
 }
 
 /**

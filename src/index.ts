@@ -11,6 +11,7 @@ import { registerCategoryTools } from "./tools/categories.js";
 import { registerTransactionTools } from "./tools/transactions.js";
 import { registerSuggestTools } from "./tools/suggest.js";
 import { registerDeleteTools } from "./tools/delete.js";
+import { registerReminderTools } from "./tools/reminders.js";
 
 const token = process.env.ZENMONEY_TOKEN;
 if (!token) {
@@ -30,7 +31,7 @@ const state = new ZenState(api, cache);
 
 const server = new McpServer({
   name: "zenmoney-mcp-ddvin",
-  version: "0.4.0",
+  version: "0.5.0",
 });
 
 registerSyncTools(server, state);
@@ -38,6 +39,7 @@ registerAccountTools(server, state);
 registerCategoryTools(server, state);
 registerTransactionTools(server, api, state);
 registerDeleteTools(server, api, state);
+registerReminderTools(server, api, state);
 registerSuggestTools(server, api, state);
 
 async function main() {

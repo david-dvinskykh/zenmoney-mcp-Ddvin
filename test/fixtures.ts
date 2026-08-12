@@ -4,6 +4,8 @@ import type {
   DiffResponse,
   Instrument,
   Merchant,
+  Reminder,
+  ReminderMarker,
   Tag,
   Transaction,
   User,
@@ -247,6 +249,55 @@ export function makeTransaction(overrides: Partial<Transaction> & { id: string }
     longitude: null,
     reminderMarker: null,
     qrCode: null,
+    ...overrides,
+  };
+}
+
+export function makeReminder(
+  overrides: Partial<Reminder> & { id: string }
+): Reminder {
+  return {
+    changed: 1000,
+    user: 1,
+    incomeInstrument: 1,
+    incomeAccount: "acc-checking",
+    income: 0,
+    outcomeInstrument: 1,
+    outcomeAccount: "acc-checking",
+    outcome: 0,
+    tag: null,
+    merchant: null,
+    payee: null,
+    comment: null,
+    interval: "month",
+    step: 1,
+    points: [1],
+    startDate: "2026-01-01",
+    endDate: null,
+    notify: false,
+    ...overrides,
+  };
+}
+
+export function makeReminderMarker(
+  overrides: Partial<ReminderMarker> & { id: string; reminder: string }
+): ReminderMarker {
+  return {
+    changed: 1000,
+    user: 1,
+    incomeInstrument: 1,
+    incomeAccount: "acc-checking",
+    income: 0,
+    outcomeInstrument: 1,
+    outcomeAccount: "acc-checking",
+    outcome: 0,
+    tag: null,
+    merchant: null,
+    payee: null,
+    comment: null,
+    date: "2026-04-01",
+    state: "planned",
+    notify: false,
     ...overrides,
   };
 }
