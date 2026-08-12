@@ -10,6 +10,7 @@ import { registerAccountTools } from "./tools/accounts.js";
 import { registerCategoryTools } from "./tools/categories.js";
 import { registerTransactionTools } from "./tools/transactions.js";
 import { registerSuggestTools } from "./tools/suggest.js";
+import { registerDeleteTools } from "./tools/delete.js";
 
 const token = process.env.ZENMONEY_TOKEN;
 if (!token) {
@@ -36,6 +37,7 @@ registerSyncTools(server, state);
 registerAccountTools(server, state);
 registerCategoryTools(server, state);
 registerTransactionTools(server, api, state);
+registerDeleteTools(server, api, state);
 registerSuggestTools(server, api, state);
 
 async function main() {

@@ -4,6 +4,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ZenMoneyAPI } from "../api.js";
 import type { ZenState } from "../state.js";
 import { ensureSynced } from "./ensure-synced.js";
+import { formatTransactionLine } from "./format.js";
 
 export function registerTransactionTools(
   server: McpServer,
@@ -400,7 +401,7 @@ export function registerTransactionTools(
 
   server.tool(
     "list_transactions",
-    "List transactions. By default returns the last 30 days; pass start_date/end_date for an arbitrary period (e.g. Jan 1–31). Syncs automatically if needed.",
+    "List transactions (expenses, income, transfers, debts). By default returns the last 30 days; pass start_date/end_date for an arbitrary period (e.g. Jan 1–31). Each row ends with the transaction id, which delete_transaction takes. Syncs automatically if needed.",
     {
       days: z
         .number()
@@ -487,53 +488,7 @@ export function registerTransactionTools(
       filtered.sort((a, b) => (b.date > a.date ? 1 : -1));
       filtered = filtered.slice(0, limit);
 
-      const lines = filtered.map((t) => {
-        const isExpense = t.outcome > 0 && t.income === 0;
-        const isIncome = t.income > 0 && t.outcome === 0;
-        const isTransfer =
-          t.incomeAccount !== t.outcomeAccount;
-
-        let type = "other";
-        let amountStr = "";
-
-        if (isTransfer) {
-          const from = state.accounts.find(
-            (a) => a.id === t.outcomeAccount
-          );
-          const to = state.accounts.find(
-            (a) => a.id === t.incomeAccount
-          );
-          type = "transfer";
-          if (t.outcomeInstrument !== t.incomeInstrument) {
-            const fromInstr = state.getInstrument(t.outcomeInstrument);
-            const toInstr = state.getInstrument(t.incomeInstrument);
-            amountStr = `${t.outcome} ${fromInstr?.shortTitle ?? ""} → ${t.income} ${toInstr?.shortTitle ?? ""} (${from?.title ?? "?"} → ${to?.title ?? "?"})`;
-          } else {
-            amountStr = `${t.outcome} (${from?.title ?? "?"} → ${to?.title ?? "?"})`;
-          }
-        } else if (isExpense) {
-          const instr = state.getInstrument(t.outcomeInstrument);
-          type = "expense";
-          amountStr = `-${t.outcome} ${instr?.shortTitle ?? ""}`;
-        } else if (isIncome) {
-          const instr = state.getInstrument(t.incomeInstrument);
-          type = "income";
-          amountStr = `+${t.income} ${instr?.shortTitle ?? ""}`;
-        }
-
-        const cats = t.tag
-          ? t.tag
-              .map(
-                (id) => state.tags.find((tg) => tg.id === id)?.title ?? id
-              )
-              .join(", ")
-          : "";
-
-        const payeeStr = t.payee ?? "";
-        const commentStr = t.comment ? ` — "${t.comment}"` : "";
-
-        return `${t.date} | ${type.padEnd(8)} | ${amountStr.padEnd(20)} | ${cats.padEnd(15)} | ${payeeStr}${commentStr}`;
-      });
+      const lines = filtered.map((t) => formatTransactionLine(state, t));
 
       return {
         content: [

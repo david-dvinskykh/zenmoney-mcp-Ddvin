@@ -276,6 +276,111 @@ describe("ZenState", () => {
 
       expect(state.transactions).toHaveLength(0);
     });
+
+    it("should drop an account's transactions along with the account", async () => {
+      const api = createApi(
+        makeDiffResponse({
+          transaction: [
+            makeTransaction({ id: "tx-on-account", outcome: 10 }),
+            makeTransaction({
+              id: "tx-from-account",
+              outcome: 20,
+              income: 20,
+              outcomeAccount: "acc-checking",
+              incomeAccount: "acc-savings",
+            }),
+            makeTransaction({
+              id: "tx-elsewhere",
+              outcome: 30,
+              outcomeAccount: "acc-savings",
+              incomeAccount: "acc-savings",
+            }),
+          ],
+          deletion: [
+            { object: "account", id: "acc-checking", stamp: 1000, user: 1 },
+          ],
+        })
+      );
+      const state = new ZenState(api);
+      await state.sync();
+
+      expect(state.transactions.map((t) => t.id)).toEqual(["tx-elsewhere"]);
+    });
+
+    it("should drop subcategories and untag transactions on a tag deletion", async () => {
+      const api = createApi(
+        makeDiffResponse({
+          transaction: [
+            makeTransaction({ id: "tx-food", outcome: 10, tag: ["tag-food"] }),
+            makeTransaction({
+              id: "tx-multi",
+              outcome: 20,
+              tag: ["tag-food", "tag-salary"],
+            }),
+          ],
+          deletion: [{ object: "tag", id: "tag-food", stamp: 1000, user: 1 }],
+        })
+      );
+      const state = new ZenState(api);
+      await state.sync();
+
+      expect(state.tags.map((t) => t.id)).toEqual(["tag-salary"]);
+      expect(state.transactions).toHaveLength(2);
+      expect(state.transactions.find((t) => t.id === "tx-food")?.tag).toBeNull();
+      expect(state.transactions.find((t) => t.id === "tx-multi")?.tag).toEqual([
+        "tag-salary",
+      ]);
+    });
+
+    it("should clear a deleted merchant from transactions", async () => {
+      const api = createApi(
+        makeDiffResponse({
+          transaction: [
+            makeTransaction({
+              id: "tx-cafe",
+              outcome: 10,
+              merchant: "merchant-cafe",
+            }),
+          ],
+          deletion: [
+            { object: "merchant", id: "merchant-cafe", stamp: 1000, user: 1 },
+          ],
+        })
+      );
+      const state = new ZenState(api);
+      await state.sync();
+
+      expect(state.merchants).toHaveLength(0);
+      expect(state.transactions[0].merchant).toBeNull();
+    });
+  });
+
+  describe("applyLocalDeletions", () => {
+    it("should remove the deleted objects and apply the response diff", async () => {
+      const api = createApi(
+        makeDiffResponse({
+          transaction: [
+            makeTransaction({ id: "tx-mine", outcome: 10 }),
+            makeTransaction({ id: "tx-theirs", outcome: 20 }),
+          ],
+        })
+      );
+      const state = new ZenState(api);
+      await state.sync();
+
+      await state.applyLocalDeletions(
+        [{ id: "tx-mine", object: "transaction", stamp: 1001, user: 1 }],
+        makeDiffResponse({
+          serverTimestamp: 1700000005,
+          deletion: [
+            { object: "transaction", id: "tx-theirs", stamp: 1001, user: 1 },
+          ],
+        })
+      );
+
+      expect(state.transactions).toHaveLength(0);
+      expect(state.serverTimestamp).toBe(1700000005);
+    });
   });
 
   describe("lookup helpers", () => {

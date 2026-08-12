@@ -32,10 +32,16 @@ disagree.
 - `src/api.ts` — ZenMoney API client
 - `src/state.ts` — in-memory state, auto-sync (`ensureSynced`), cache restore/persist
 - `src/cache.ts` — on-disk snapshot keyed by `sha256(token)`, survives process restarts
-- `src/tools/` — MCP tool registrations (sync, accounts, categories, transactions, suggest)
+- `src/tools/` — MCP tool registrations (sync, accounts, categories, transactions,
+  delete, suggest) plus `format.ts`, the shared transaction renderer
 
 ## Conventions
 
 Tools must not require a prior `sync_data` call — gate them with
 `ensureSynced(state)` from `src/tools/ensure-synced.ts`, which syncs on demand and
 returns a tool error result if that fails.
+
+Destructive tools are two-step: without `confirm: true` they only report what
+would happen. Deletions go out as the diff request's `deletion` array and are
+mirrored locally with `state.applyLocalDeletions()` — like any write, the
+response is a diff since the last `serverTimestamp` and must be applied in full.

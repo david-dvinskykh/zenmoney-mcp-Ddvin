@@ -2,13 +2,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import type { ZenMoneyAPI } from "../src/api.js";
+import type { Account, ZenMoneyAPI } from "../src/api.js";
 import { ZenState } from "../src/state.js";
 import { registerTransactionTools } from "../src/tools/transactions.js";
 import {
   makeDiffResponse,
   makeTransaction,
+  ARCHIVED_ACCOUNT,
   CHECKING,
+  DEBT_ACCOUNT,
   SAVINGS,
   EURO_CARD,
 } from "./fixtures.js";
@@ -23,9 +25,11 @@ async function setup(opts?: {
   synced?: boolean;
   syncError?: Error;
   transactions?: ReturnType<typeof makeTransaction>[];
+  accounts?: Account[];
 }) {
   const diffResp = makeDiffResponse({
     transaction: opts?.transactions ?? [],
+    ...(opts?.accounts ? { account: opts.accounts } : {}),
   });
 
   api = {
@@ -676,6 +680,46 @@ describe("list_transactions", () => {
     expect(text).toContain("transfer");
     expect(text).toContain("1000 USD");
     expect(text).toContain("920 EUR");
+  });
+
+  it("should print the id of each transaction", async () => {
+    await setup({
+      transactions: [
+        makeTransaction({ id: "tx-expense", outcome: 50, date: "2026-03-20" }),
+      ],
+    });
+
+    const result = await callTool("list_transactions", {
+      start_date: "2026-03-01",
+      end_date: "2026-03-31",
+    });
+    expect(getTextContent(result)).toContain("id: `tx-expense`");
+  });
+
+  it("should label operations on a debt account as debt", async () => {
+    await setup({
+      accounts: [CHECKING, SAVINGS, EURO_CARD, ARCHIVED_ACCOUNT, DEBT_ACCOUNT],
+      transactions: [
+        makeTransaction({
+          id: "tx-debt",
+          outcome: 300,
+          income: 300,
+          outcomeAccount: "acc-checking",
+          incomeAccount: "acc-debt",
+          payee: "Alice",
+          date: "2026-03-10",
+        }),
+      ],
+    });
+
+    const result = await callTool("list_transactions", {
+      start_date: "2026-03-01",
+      end_date: "2026-03-31",
+    });
+    const text = getTextContent(result);
+    expect(text).toContain("debt");
+    expect(text).toContain("Checking → Debts");
+    expect(text).toContain("Alice");
   });
 
   it("should filter by account", async () => {

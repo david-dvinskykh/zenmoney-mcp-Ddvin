@@ -8,6 +8,7 @@ import {
   type Transaction,
   type User,
   type DiffResponse,
+  type Deletion,
 } from "./api.js";
 import type { StateCache } from "./cache.js";
 
@@ -184,6 +185,22 @@ export class ZenState {
     await this.persist();
   }
 
+  /**
+   * Record deletions that were just pushed to ZenMoney so the local snapshot
+   * matches the server without another round trip. Like a write, the response
+   * is a diff since our last serverTimestamp and has to be applied in full.
+   */
+  async applyLocalDeletions(
+    deletions: Deletion[],
+    resp: DiffResponse
+  ): Promise<void> {
+    for (const del of deletions) {
+      this.applyDeletion(del.object, del.id);
+    }
+    this.applyDiff(resp);
+    await this.persist();
+  }
+
   /** Drop the on-disk snapshot (used by force_full re-downloads). */
   async clearCache(): Promise<void> {
     if (!this.cache) return;
@@ -274,12 +291,28 @@ export class ZenState {
         break;
       case "account":
         this.accounts = this.accounts.filter((a) => a.id !== id);
+        // ZenMoney removes an account's transactions along with it; mirror that
+        // so the snapshot doesn't keep entries pointing at a missing account.
+        this.transactions = this.transactions.filter(
+          (t) => t.incomeAccount !== id && t.outcomeAccount !== id
+        );
         break;
       case "tag":
         this.tags = this.tags.filter((t) => t.id !== id);
+        // Child categories go with the parent, and transactions lose the tag
+        // rather than keeping a dangling id.
+        this.tags = this.tags.filter((t) => t.parent !== id);
+        this.transactions = this.transactions.map((t) => {
+          if (!t.tag?.includes(id)) return t;
+          const rest = t.tag.filter((tagId) => tagId !== id);
+          return { ...t, tag: rest.length > 0 ? rest : null };
+        });
         break;
       case "merchant":
         this.merchants = this.merchants.filter((m) => m.id !== id);
+        this.transactions = this.transactions.map((t) =>
+          t.merchant === id ? { ...t, merchant: null } : t
+        );
         break;
     }
   }

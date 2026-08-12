@@ -14,6 +14,8 @@ MCP server for [ZenMoney](https://zenmoney.ru) — access your personal finance 
 | `add_expense` | Add an expense transaction |
 | `add_income` | Add an income transaction |
 | `add_transfer` | Transfer money between accounts (including cross-currency) |
+| `delete_transaction` | Delete transactions — expenses, income, transfers, debts |
+| `delete_object` | Delete an account, a category, or a merchant |
 | `suggest_category` | Get auto-suggested category for a payee |
 
 **No manual sync needed.** Any tool syncs on demand if the data isn't loaded yet,
@@ -182,7 +184,35 @@ Once configured, start a conversation and ask your AI client to:
 2. **Query** — "Show expenses for the last 7 days", "List transactions from January 1–31", "How much did I spend on groceries?"
 3. **Add transactions** — "Add a 500 RUB expense for coffee today"
 4. **Transfer** — "Transfer 1000 USD from Checking to Euro Card, received 920 EUR"
-5. **Refresh** — "Sync my ZenMoney data" (only needed to pull changes mid-conversation)
+5. **Delete** — "Delete yesterday's duplicate coffee expense", "Remove that transfer to Savings"
+6. **Refresh** — "Sync my ZenMoney data" (only needed to pull changes mid-conversation)
+
+## Deleting data
+
+`delete_transaction` removes transactions of any kind — expenses, income,
+transfers between accounts, and debts (a debt in ZenMoney is an ordinary
+transaction with the debt account on one side). It takes the ids that
+`list_transactions` prints at the end of each row, one via `id` or several via
+`ids`.
+
+`delete_object` removes an account, a category, or a merchant. Deleting an
+account also deletes every transaction booked on it; deleting a category keeps
+the transactions and leaves them uncategorized.
+
+Both are two-step. The first call reports exactly what would go — including the
+knock-on effects — and changes nothing:
+
+```
+About to delete 1 transaction:
+
+- 2026-03-20 | expense  | -50 USD  | Food | Grocery Store | id: `a1b2…`
+
+Nothing has been deleted yet. Call delete_transaction again with confirm=true
+to delete permanently.
+```
+
+Repeat the call with `confirm: true` to go through with it. ZenMoney deletions
+are permanent — there is no undo, so the preview is the last checkpoint.
 
 ## Auto-sync and caching
 

@@ -107,6 +107,31 @@ export const EURO_CARD: Account = {
   private: false,
 };
 
+/**
+ * The synthetic account ZenMoney books debts against. Not part of the default
+ * diff response — tests that need it pass their own account list, so the
+ * account counts other tests assert on stay put.
+ */
+export const DEBT_ACCOUNT: Account = {
+  id: "acc-debt",
+  changed: 1000,
+  user: 1,
+  instrument: 1,
+  company: null,
+  type: "debt",
+  title: "Debts",
+  syncID: null,
+  balance: 0,
+  startBalance: 0,
+  creditLimit: null,
+  inBalance: false,
+  savings: false,
+  enableCorrection: false,
+  enableSMS: false,
+  archive: false,
+  private: false,
+};
+
 export const ARCHIVED_ACCOUNT: Account = {
   id: "acc-archived",
   changed: 1000,

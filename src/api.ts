@@ -14,7 +14,19 @@ export interface DiffRequest {
   reminder?: any[];
   reminderMarker?: any[];
   transaction?: any[];
-  deletion?: any[];
+  deletion?: Deletion[];
+}
+
+/**
+ * An object the client asks the server to delete (or the server reports as
+ * deleted). `object` is the entity name used by the diff protocol —
+ * "transaction", "account", "tag", "merchant", …
+ */
+export interface Deletion {
+  id: string;
+  object: string;
+  stamp: number;
+  user: number;
 }
 
 export interface DiffResponse {
@@ -29,7 +41,7 @@ export interface DiffResponse {
   reminder: any[];
   reminderMarker: any[];
   transaction: Transaction[];
-  deletion: any[];
+  deletion: Deletion[];
 }
 
 export interface Instrument {
