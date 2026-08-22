@@ -14,6 +14,8 @@ MCP server for [ZenMoney](https://zenmoney.ru) — access your personal finance 
 | `add_expense` | Add an expense transaction |
 | `add_income` | Add an income transaction |
 | `add_transfer` | Transfer money between accounts (including cross-currency) |
+| `add_debt` | Record a debt — money lent, borrowed, or repaid |
+| `update_transaction` | Edit an existing transaction (date, amount, account, category, payee, comment) |
 | `delete_transaction` | Delete transactions — expenses, income, transfers, debts |
 | `delete_object` | Delete an account, a category, or a merchant |
 | `suggest_category` | Get auto-suggested category for a payee |
@@ -184,8 +186,77 @@ Once configured, start a conversation and ask your AI client to:
 2. **Query** — "Show expenses for the last 7 days", "List transactions from January 1–31", "How much did I spend on groceries?"
 3. **Add transactions** — "Add a 500 RUB expense for coffee today"
 4. **Transfer** — "Transfer 1000 USD from Checking to Euro Card, received 920 EUR"
-5. **Delete** — "Delete yesterday's duplicate coffee expense", "Remove that transfer to Savings"
-6. **Refresh** — "Sync my ZenMoney data" (only needed to pull changes mid-conversation)
+5. **Lend and borrow** — "I lent Masha 500 RUB in cash today", "Masha paid me back 200"
+6. **Edit** — "That coffee was 350, not 500", "Move yesterday's lunch to the Restaurants category"
+7. **Delete** — "Delete yesterday's duplicate coffee expense", "Remove that transfer to Savings"
+8. **Refresh** — "Sync my ZenMoney data" (only needed to pull changes mid-conversation)
+
+## Debts
+
+A debt in ZenMoney is an ordinary transaction with the system **debt account** on
+one side, so `add_debt` books both legs for you. `direction` says which way the
+money moved and what it means:
+
+| `direction` | Money | Meaning |
+|-------------|-------|---------|
+| `lend` | leaves your account | they owe you |
+| `borrow` | arrives on your account | you owe them |
+| `repay_received` | arrives on your account | their debt to you goes down |
+| `repay_sent` | leaves your account | your debt to them goes down |
+
+```
+"I lent Masha 500 RUB from my Cash account on 2026-03-20"
+→ add_debt(direction="lend", account="Cash", amount=500, payee="Masha", date="2026-03-20")
+```
+
+`payee` is the counterparty. Reuse the exact same name for a loan and its
+repayments — that is how ZenMoney keeps one running balance per person. If a
+merchant with that exact title already exists, it is linked automatically.
+
+The amount is always in the currency of *your* account: the debt account's own
+currency is your main currency and never appears on the transaction, which is
+what the ZenMoney diff protocol expects.
+
+ZenMoney creates the debt account itself the first time a debt is recorded. If
+you have never had one, `add_debt` says so — add a single debt in the ZenMoney
+app (or [Zerro](https://zerro.app)), run `sync_data`, and it will work from then on.
+
+## Editing transactions
+
+`update_transaction` edits any existing transaction — an expense, an income, a
+transfer, or a debt. It takes the id `list_transactions` prints at the end of
+each row, and only the fields you pass are changed:
+
+| Field | Applies to |
+|-------|-----------|
+| `date` | everything |
+| `amount` | expenses, income, and same-currency transfers/debts (replaces both legs) |
+| `outcome_amount` / `income_amount` | transfers and debts, including cross-currency |
+| `account` | expenses and income |
+| `from_account` / `to_account` | transfers and debts |
+| `category`, `payee`, `comment` | everything — pass an empty string to clear |
+
+Like the delete tools it is two-step: the first call previews the before/after
+and changes nothing.
+
+```
+About to update transaction `a1b2…`:
+
+Before: 2026-03-20 | expense  | -50 USD    | Food        | Corner Cafe — "lunch" | id: `a1b2…`
+After:  2026-03-22 | expense  | -60 USD    | Restaurants | Corner Cafe — "lunch" | id: `a1b2…`
+
+Changes:
+- date: 2026-03-20 → 2026-03-22
+- outcome: 50 USD → 60 USD
+- category: Food → Restaurants
+
+Nothing has been saved yet. Call update_transaction again with confirm=true to apply.
+```
+
+Repeat with `confirm: true` to save. Changing the payee also updates the linked
+merchant (ZenMoney shows the merchant in preference to the raw payee), so it is
+re-matched by name or cleared. Editing overwrites the old values — there is no
+undo.
 
 ## Deleting data
 
@@ -265,8 +336,8 @@ To cut a release, bump the version in **`package.json`, `manifest.json`,
 sync by hand), then:
 
 ```bash
-git commit -am "Release v0.4.0"
-git tag v0.4.0
+git commit -am "Release v0.5.0"
+git tag v0.5.0
 git push origin main --tags
 ```
 
