@@ -5,6 +5,7 @@ import type { ZenMoneyAPI } from "../api.js";
 import type { ZenState } from "../state.js";
 import { ensureSynced } from "./ensure-synced.js";
 import { formatTransactionLine } from "./format.js";
+import { resolveAccount, resolveTag, tagTitles } from "./resolve.js";
 
 export function registerTransactionTools(
   server: McpServer,
@@ -104,11 +105,7 @@ export function registerTransactionTools(
 
         const instr = state.getInstrument(instrumentId);
         const currency = instr?.shortTitle ?? "";
-        const catName = tagIds
-          ? tagIds
-              .map((id) => state.tags.find((t) => t.id === id)?.title ?? id)
-              .join(", ")
-          : "uncategorized";
+        const catName = tagTitles(state, tagIds);
 
         return {
           content: [
@@ -505,16 +502,3 @@ export function registerTransactionTools(
   );
 }
 
-function resolveAccount(state: ZenState, nameOrId: string) {
-  const direct = state.accounts.find((a) => a.id === nameOrId);
-  if (direct) return direct;
-  return state.findAccountByName(nameOrId);
-}
-
-function resolveTag(state: ZenState, nameOrId: string): string[] | null {
-  const direct = state.tags.find((t) => t.id === nameOrId);
-  if (direct) return [direct.id];
-  const byName = state.findTagByName(nameOrId);
-  if (byName) return [byName.id];
-  return null;
-}

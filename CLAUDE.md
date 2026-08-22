@@ -33,7 +33,8 @@ disagree.
 - `src/state.ts` — in-memory state, auto-sync (`ensureSynced`), cache restore/persist
 - `src/cache.ts` — on-disk snapshot keyed by `sha256(token)`, survives process restarts
 - `src/tools/` — MCP tool registrations (sync, accounts, categories, transactions,
-  delete, suggest) plus `format.ts`, the shared transaction renderer
+  debts, update, delete, suggest) plus `format.ts`, the shared transaction
+  renderer, and `resolve.ts`, the shared account/category/merchant lookups
 
 ## Conventions
 
@@ -42,6 +43,14 @@ Tools must not require a prior `sync_data` call — gate them with
 returns a tool error result if that fails.
 
 Destructive tools are two-step: without `confirm: true` they only report what
-would happen. Deletions go out as the diff request's `deletion` array and are
-mirrored locally with `state.applyLocalDeletions()` — like any write, the
-response is a diff since the last `serverTimestamp` and must be applied in full.
+would happen. That covers `update_transaction` as well — an edit overwrites the
+old values — so its preview renders a before/after pair. Deletions go out as the
+diff request's `deletion` array and are mirrored locally with
+`state.applyLocalDeletions()` — like any write, the response is a diff since the
+last `serverTimestamp` and must be applied in full.
+
+A debt is not a separate entity: it is a transaction with the system `debt`
+account (`account.type === "debt"`, one per user) on one side. Both legs carry
+the **non-debt** account's `instrument` and an equal amount — the debt account's
+own currency is `user.currency` and never appears on the transaction. Editing a
+debt goes through the same normalization in `src/tools/update.ts`.

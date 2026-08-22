@@ -207,6 +207,18 @@ export const MERCHANT_CAFE: Merchant = {
   title: "Corner Cafe",
 };
 
+/**
+ * A merchant whose title matches a debt counterparty exactly. Not part of the
+ * default diff response — tests that need it pass their own merchant list, so
+ * the merchant counts other tests assert on stay put.
+ */
+export const MERCHANT_MASHA: Merchant = {
+  id: "merchant-masha",
+  changed: 1000,
+  user: 1,
+  title: "Masha",
+};
+
 export const COMPANY_BANK: Company = {
   id: 1,
   changed: 1000,

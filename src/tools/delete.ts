@@ -4,6 +4,7 @@ import type { Deletion, ZenMoneyAPI } from "../api.js";
 import type { ZenState } from "../state.js";
 import { ensureSynced } from "./ensure-synced.js";
 import { formatTransactionLine } from "./format.js";
+import { textResult } from "./resolve.js";
 
 /** Entity types delete_object accepts, mapped to their diff-protocol names. */
 const OBJECT_TYPES = {
@@ -14,12 +15,6 @@ const OBJECT_TYPES = {
 
 type ObjectType = keyof typeof OBJECT_TYPES;
 
-function textResult(text: string, isError = false) {
-  return {
-    content: [{ type: "text" as const, text }],
-    ...(isError ? { isError: true } : {}),
-  };
-}
 
 export function registerDeleteTools(
   server: McpServer,
