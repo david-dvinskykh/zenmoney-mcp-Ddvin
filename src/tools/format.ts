@@ -8,6 +8,23 @@ export type TransactionKind =
   | "debt"
   | "other";
 
+/**
+ * The money-carrying half of a transaction. A reminder describes its planned
+ * operation with the same fields, so both render through one summarizer.
+ */
+export type OperationLike = Pick<
+  Transaction,
+  | "income"
+  | "outcome"
+  | "incomeAccount"
+  | "outcomeAccount"
+  | "incomeInstrument"
+  | "outcomeInstrument"
+  | "tag"
+  | "payee"
+  | "comment"
+>;
+
 export interface TransactionSummary {
   kind: TransactionKind;
   /** Amount with currency, plus account names for two-sided operations. */
@@ -26,7 +43,7 @@ export interface TransactionSummary {
  */
 export function summarizeTransaction(
   state: ZenState,
-  t: Transaction
+  t: OperationLike
 ): TransactionSummary {
   const from = state.accounts.find((a) => a.id === t.outcomeAccount);
   const to = state.accounts.find((a) => a.id === t.incomeAccount);

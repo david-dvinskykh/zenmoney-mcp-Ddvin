@@ -33,14 +33,20 @@ disagree.
 - `src/state.ts` — in-memory state, auto-sync (`ensureSynced`), cache restore/persist
 - `src/cache.ts` — on-disk snapshot keyed by `sha256(token)`, survives process restarts
 - `src/tools/` — MCP tool registrations (sync, accounts, categories, transactions,
-  debts, update, delete, suggest) plus `format.ts`, the shared transaction
-  renderer, and `resolve.ts`, the shared account/category/merchant lookups
+  debts, update, delete, reminders, suggest) plus `format.ts`, the shared
+  transaction renderer, and `resolve.ts`, the shared account/category/merchant
+  lookups
 
 ## Conventions
 
 Tools must not require a prior `sync_data` call — gate them with
 `ensureSynced(state)` from `src/tools/ensure-synced.ts`, which syncs on demand and
 returns a tool error result if that fails.
+
+Reminders are ZenMoney's planned transactions: a `reminder` holds the schedule
+and `reminderMarker`s are its dated occurrences. Deleting a reminder deletes its
+markers too — server-side and in `applyDeletion`. Nothing interprets a
+reminder's `points` field; concrete dates come from the markers.
 
 Destructive tools are two-step: without `confirm: true` they only report what
 would happen. That covers `update_transaction` as well — an edit overwrites the

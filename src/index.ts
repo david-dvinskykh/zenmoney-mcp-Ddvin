@@ -13,6 +13,7 @@ import { registerUpdateTools } from "./tools/update.js";
 import { registerDebtTools } from "./tools/debts.js";
 import { registerSuggestTools } from "./tools/suggest.js";
 import { registerDeleteTools } from "./tools/delete.js";
+import { registerReminderTools } from "./tools/reminders.js";
 
 const token = process.env.ZENMONEY_TOKEN;
 if (!token) {
@@ -32,7 +33,7 @@ const state = new ZenState(api, cache);
 
 const server = new McpServer({
   name: "zenmoney-mcp-ddvin",
-  version: "0.5.0",
+  version: "0.6.0",
 });
 
 registerSyncTools(server, state);
@@ -42,6 +43,7 @@ registerTransactionTools(server, api, state);
 registerDebtTools(server, api, state);
 registerUpdateTools(server, api, state);
 registerDeleteTools(server, api, state);
+registerReminderTools(server, api, state);
 registerSuggestTools(server, api, state);
 
 async function main() {

@@ -18,6 +18,8 @@ MCP server for [ZenMoney](https://zenmoney.ru) — access your personal finance 
 | `update_transaction` | Edit an existing transaction (date, amount, account, category, payee, comment) |
 | `delete_transaction` | Delete transactions — expenses, income, transfers, debts |
 | `delete_object` | Delete an account, a category, or a merchant |
+| `list_reminders` | List planned transactions — recurring and one-off |
+| `delete_reminder` | Delete a planned transaction and its future occurrences |
 | `suggest_category` | Get auto-suggested category for a payee |
 
 **No manual sync needed.** Any tool syncs on demand if the data isn't loaded yet,
@@ -189,7 +191,8 @@ Once configured, start a conversation and ask your AI client to:
 5. **Lend and borrow** — "I lent Masha 500 RUB in cash today", "Masha paid me back 200"
 6. **Edit** — "That coffee was 350, not 500", "Move yesterday's lunch to the Restaurants category"
 7. **Delete** — "Delete yesterday's duplicate coffee expense", "Remove that transfer to Savings"
-8. **Refresh** — "Sync my ZenMoney data" (only needed to pull changes mid-conversation)
+8. **Plan** — "What payments are coming up?", "Cancel the gym reminder"
+9. **Refresh** — "Sync my ZenMoney data" (only needed to pull changes mid-conversation)
 
 ## Debts
 
@@ -270,7 +273,14 @@ transaction with the debt account on one side). It takes the ids that
 account also deletes every transaction booked on it; deleting a category keeps
 the transactions and leaves them uncategorized.
 
-Both are two-step. The first call reports exactly what would go — including the
+`delete_reminder` removes a planned transaction. For a recurring series that
+means the series itself and every occurrence still planned; transactions
+already created from past occurrences stay. It takes an id from
+`list_reminders`, or text matched against the reminder's payee, comment,
+merchant and category — when that text matches more than one reminder the tool
+lists the candidates and deletes nothing.
+
+All three are two-step. The first call reports exactly what would go — including the
 knock-on effects — and changes nothing:
 
 ```

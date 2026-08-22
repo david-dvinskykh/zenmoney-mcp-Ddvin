@@ -3,6 +3,8 @@ import { ZenState } from "../src/state.js";
 import type { ZenMoneyAPI } from "../src/api.js";
 import {
   makeDiffResponse,
+  makeReminder,
+  makeReminderMarker,
   makeTransaction,
   USD,
   EUR,
@@ -352,6 +354,98 @@ describe("ZenState", () => {
 
       expect(state.merchants).toHaveLength(0);
       expect(state.transactions[0].merchant).toBeNull();
+    });
+  });
+
+  describe("reminders", () => {
+    it("should keep reminders and their markers from the diff", async () => {
+      const api = createApi(
+        makeDiffResponse({
+          reminder: [makeReminder({ id: "rem-1" })],
+          reminderMarker: [
+            makeReminderMarker({ id: "mk-1", reminder: "rem-1" }),
+          ],
+        })
+      );
+      const state = new ZenState(api);
+      await state.sync();
+
+      expect(state.reminders.map((r) => r.id)).toEqual(["rem-1"]);
+      expect(state.reminderMarkers.map((m) => m.id)).toEqual(["mk-1"]);
+    });
+
+    it("should ask for reminders in a full fetch", async () => {
+      const api = createApi();
+      const state = new ZenState(api);
+      await state.sync(true);
+
+      const req = vi.mocked(api.diff).mock.calls[0][0] as {
+        forceFetch?: string[];
+      };
+      expect(req.forceFetch).toContain("reminder");
+      expect(req.forceFetch).toContain("reminderMarker");
+    });
+
+    it("should drop a deleted reminder together with its markers", async () => {
+      const api = createApi(
+        makeDiffResponse({
+          reminder: [
+            makeReminder({ id: "rem-1" }),
+            makeReminder({ id: "rem-2" }),
+          ],
+          reminderMarker: [
+            makeReminderMarker({ id: "mk-1", reminder: "rem-1" }),
+            makeReminderMarker({ id: "mk-2", reminder: "rem-2" }),
+          ],
+          deletion: [
+            { object: "reminder", id: "rem-1", stamp: 1000, user: 1 },
+          ],
+        })
+      );
+      const state = new ZenState(api);
+      await state.sync();
+
+      expect(state.reminders.map((r) => r.id)).toEqual(["rem-2"]);
+      expect(state.reminderMarkers.map((m) => m.id)).toEqual(["mk-2"]);
+    });
+
+    it("should apply a single marker deletion without touching the series", async () => {
+      const api = createApi(
+        makeDiffResponse({
+          reminder: [makeReminder({ id: "rem-1" })],
+          reminderMarker: [
+            makeReminderMarker({ id: "mk-1", reminder: "rem-1" }),
+            makeReminderMarker({ id: "mk-2", reminder: "rem-1" }),
+          ],
+          deletion: [
+            { object: "reminderMarker", id: "mk-1", stamp: 1000, user: 1 },
+          ],
+        })
+      );
+      const state = new ZenState(api);
+      await state.sync();
+
+      expect(state.reminders).toHaveLength(1);
+      expect(state.reminderMarkers.map((m) => m.id)).toEqual(["mk-2"]);
+    });
+
+    it("should clear reminders on a forced full re-sync", async () => {
+      const api = createApi(
+        makeDiffResponse({
+          reminder: [makeReminder({ id: "rem-1" })],
+          reminderMarker: [
+            makeReminderMarker({ id: "mk-1", reminder: "rem-1" }),
+          ],
+        })
+      );
+      const state = new ZenState(api);
+      await state.sync();
+
+      vi.mocked(api.diff).mockResolvedValue(makeDiffResponse());
+      await state.sync(true);
+
+      expect(state.reminders).toHaveLength(0);
+      expect(state.reminderMarkers).toHaveLength(0);
     });
   });
 
