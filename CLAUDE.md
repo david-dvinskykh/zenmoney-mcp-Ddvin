@@ -37,6 +37,19 @@ disagree.
   transaction renderer, and `resolve.ts`, the shared account/category/merchant
   lookups
 
+## Go port (`go/`)
+
+`go/` holds a full port of this server: the same 15 tools, the same output text,
+the same cache file format and directory, so both implementations can share one
+cache. It adds a `-http` flag that serves the tools as a long-lived streamable
+HTTP service, which is what makes it worth having — under MetaMCP a stdio server
+is respawned per client session, and the Go service is started once instead.
+Measured against a 20 593-transaction stub: 158 MB peak RSS down to 11 MB.
+
+Changes to a tool's behaviour belong in both implementations, or in neither.
+`go/README.md` records the two places they deliberately differ (date-format
+validation, and the mutex the shared state needs).
+
 ## Conventions
 
 Tools must not require a prior `sync_data` call — gate them with
