@@ -58,12 +58,19 @@ returns a tool error result if that fails.
 
 Reminders are ZenMoney's planned transactions: a `reminder` holds the schedule
 and `reminderMarker`s are its dated occurrences. Deleting a reminder deletes its
-markers too — server-side and in `applyDeletion`. Creating one is the other way
-round: `add_reminder` pushes only the reminder and ZenMoney expands the series
-into markers itself, returning them in the same response — so the tools never
-compute a date. `points` is written by `add_reminder` and read by nothing: it
-holds positions inside the step window, counted in `interval` units from
-`startDate` and zero-based, so every point is below `step`.
+markers too — server-side and in `applyDeletion`.
+
+**The server does not expand a series.** Verified against a live account on
+19.09.2026: a reminder pushed on its own comes back from the next sync with no
+markers at all, and `list_reminders` shows it as "nothing planned". Occurrences
+are the client's to write, which is what the app does — a weekly reminder there
+carries 51 planned ones. So `add_reminder` walks the schedule itself
+(`occurrenceDates`) and pushes reminder and markers in one diff: to `end_date`,
+or a year ahead when the series is open-ended, capped at 400 per write.
+`points` holds positions inside the step window, counted in `interval` units
+from `startDate` and zero-based, so every point is below `step`; a month or
+year step clamps to the end of the month rather than rolling over, and a date
+that is not on the calendar is rejected before any of this runs.
 
 Destructive tools are two-step: without `confirm: true` they only report what
 would happen. That covers `update_transaction` as well — an edit overwrites the

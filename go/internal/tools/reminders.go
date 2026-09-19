@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -333,6 +334,14 @@ func registerAddReminders(server *mcp.Server, api *zen.API, st *zen.State) {
 		if args.EndDate != nil && !dateRE.MatchString(*args.EndDate) {
 			return errorResult("end_date must be in YYYY-MM-DD format."), nil, nil
 		}
+		if !isCalendarDate(args.StartDate) {
+			return errorResult("start_date is " + args.StartDate +
+				", which is not a date on the calendar."), nil, nil
+		}
+		if args.EndDate != nil && !isCalendarDate(*args.EndDate) {
+			return errorResult("end_date is " + *args.EndDate +
+				", which is not a date on the calendar."), nil, nil
+		}
 
 		if fail := ensureSynced(ctx, st); fail != nil {
 			return fail, nil, nil
@@ -395,23 +404,30 @@ func registerAddReminders(server *mcp.Server, api *zen.API, st *zen.State) {
 			Notify:            notify,
 		}
 
+		dates := occurrenceDates(reminder.StartDate, sched)
+		markers := make([]zen.ReminderMarker, 0, len(dates))
+		for _, date := range dates {
+			markers = append(markers, occurrenceOf(reminder, date, now))
+		}
+
 		resp, err := api.Diff(ctx, zen.DiffRequest{
 			CurrentClientTimestamp: now,
 			ServerTimestamp:        st.ServerTimestamp(),
 			Reminder:               []zen.Reminder{reminder},
+			ReminderMarker:         markers,
 		})
 		if err != nil {
 			return errorResult("Failed to add reminder: " + err.Error()), nil, nil
 		}
-		st.ApplyLocalReminder(reminder, resp)
+		st.ApplyLocalReminder(reminder, markers, resp)
 
-		dates := plannedDates(st, reminder.ID)
+		planned := plannedDates(st, reminder.ID)
 		next := ""
-		if len(dates) > 0 {
-			next = dates[0]
+		if len(planned) > 0 {
+			next = planned[0]
 		}
 		return textResult("Reminder added:\n\n- " + formatReminderLine(st, reminder, next) +
-			"\n\n" + describeOccurrences(dates)), nil, nil
+			"\n\n" + describeOccurrences(planned, sched)), nil, nil
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -424,6 +440,10 @@ func registerAddReminders(server *mcp.Server, api *zen.API, st *zen.State) {
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, args addReminderMarkerArgs) (*mcp.CallToolResult, any, error) {
 		if !dateRE.MatchString(args.Date) {
 			return errorResult("date must be in YYYY-MM-DD format."), nil, nil
+		}
+		if !isCalendarDate(args.Date) {
+			return errorResult("date is " + args.Date +
+				", which is not a date on the calendar."), nil, nil
 		}
 
 		if fail := ensureSynced(ctx, st); fail != nil {
@@ -555,14 +575,13 @@ func plannedDates(st *zen.State, reminderID string) []string {
 	return dates
 }
 
-// describeOccurrences reports the dates a new reminder came back with. ZenMoney
-// expands the series itself, so an empty list is not an error — the markers
-// simply have not arrived yet.
-func describeOccurrences(dates []string) string {
+// describeOccurrences reports the occurrences written with the reminder, and
+// where they stop.
+func describeOccurrences(dates []string, sched schedule) string {
 	if len(dates) == 0 {
-		return "No occurrences came back with it yet — ZenMoney expands a series on its own side. " +
-			"Run sync_data, or list_reminders in a moment, to see the dates."
+		return "No occurrences were written — nothing in the schedule falls inside its own end date."
 	}
+
 	shown := dates
 	rest := 0
 	if len(shown) > 5 {
@@ -573,7 +592,132 @@ func describeOccurrences(dates []string) string {
 	if rest > 0 {
 		more = " (+" + strconv.Itoa(rest) + " more)"
 	}
-	return "Planned: " + strings.Join(shown, ", ") + more + "."
+	list := "Planned " + strconv.Itoa(len(dates)) + " occurrence" + plural(len(dates), "", "s") +
+		": " + strings.Join(shown, ", ") + more
+
+	switch {
+	case sched.interval == nil:
+		return list + "."
+	case sched.endDate != nil:
+		return list + ", through " + *sched.endDate + "."
+	default:
+		return list + ", a year ahead — the horizon an open-ended series gets, the same one " +
+			"the ZenMoney app keeps. Extend it later with add_reminder_marker."
+	}
+}
+
+// horizonMonths is how far an open-ended series is written out. ZenMoney's own
+// app materializes roughly a year of occurrences — a weekly reminder in a live
+// account carries 51 planned ones — and nothing on the server extends a series
+// later, so this is the horizon a series gets until someone adds to it.
+const horizonMonths = 12
+
+// maxOccurrences is the ceiling on one write, so a daily open-ended series
+// cannot run away.
+const maxOccurrences = 400
+
+// isCalendarDate reports whether an ISO date names a day that exists. The shape
+// check dateRE does accepts 2026-02-29 in a year that has no 29th of February,
+// and a schedule starting on a day that is not there has no dates to walk.
+func isCalendarDate(date string) bool {
+	_, err := time.Parse("2006-01-02", date)
+	return err == nil
+}
+
+// addInterval adds n interval units to an ISO date. A month or year step clamps
+// to the end of the target month, so the 31st becomes the 28th in February
+// instead of rolling into March the way naive date arithmetic would.
+func addInterval(date, interval string, n int) string {
+	t, err := time.Parse("2006-01-02", date)
+	if err != nil {
+		return date
+	}
+
+	switch interval {
+	case "day":
+		return t.AddDate(0, 0, n).Format("2006-01-02")
+	case "week":
+		return t.AddDate(0, 0, n*7).Format("2006-01-02")
+	}
+
+	months := n
+	if interval == "year" {
+		months = n * 12
+	}
+	total := int(t.Year())*12 + int(t.Month()) - 1 + months
+	year, month := total/12, time.Month(total%12+1)
+	// Day 0 of the next month is the last day of this one.
+	lastDay := time.Date(year, month+1, 0, 0, 0, 0, 0, time.UTC).Day()
+	day := t.Day()
+	if day > lastDay {
+		day = lastDay
+	}
+	return time.Date(year, month, day, 0, 0, 0, 0, time.UTC).Format("2006-01-02")
+}
+
+// occurrenceDates are the dates a schedule fires on, soonest first.
+//
+// ZenMoney does not expand a reminder into occurrences — that is the client's
+// job, which is why a series pushed on its own shows up with nothing planned.
+// Each window is step intervals long and starts at startDate; points are
+// offsets inside it, counted in the same interval unit.
+func occurrenceDates(startDate string, sched schedule) []string {
+	if sched.interval == nil || *sched.interval == "" {
+		return []string{startDate}
+	}
+
+	interval := *sched.interval
+	step := int64(1)
+	if sched.step != nil {
+		step = *sched.step
+	}
+	points := sched.points
+	if len(points) == 0 {
+		points = []int64{0}
+	}
+	limit := addInterval(startDate, "month", horizonMonths)
+	if sched.endDate != nil && *sched.endDate != "" {
+		limit = *sched.endDate
+	}
+
+	var dates []string
+	for window := 0; len(dates) < maxOccurrences; window++ {
+		windowStart := addInterval(startDate, interval, window*int(step))
+		if windowStart > limit {
+			break
+		}
+		for _, point := range points {
+			date := addInterval(windowStart, interval, int(point))
+			if date <= limit && len(dates) < maxOccurrences {
+				dates = append(dates, date)
+			}
+		}
+	}
+	return dates
+}
+
+// occurrenceOf is one occurrence of a reminder, carrying the reminder's own
+// operation.
+func occurrenceOf(r zen.Reminder, date string, stamp int64) zen.ReminderMarker {
+	return zen.ReminderMarker{
+		ID:                newUUID(),
+		Changed:           stamp,
+		User:              r.User,
+		IncomeInstrument:  r.IncomeInstrument,
+		IncomeAccount:     r.IncomeAccount,
+		Income:            r.Income,
+		OutcomeInstrument: r.OutcomeInstrument,
+		OutcomeAccount:    r.OutcomeAccount,
+		Outcome:           r.Outcome,
+		Tag:               r.Tag,
+		Merchant:          r.Merchant,
+		Payee:             r.Payee,
+		Comment:           r.Comment,
+		Date:              date,
+		Reminder:          r.ID,
+		State:             "planned",
+		Notify:            r.Notify,
+	}
 }
 
 // formatMarkerLine is the one-line rendering of a single occurrence, matching

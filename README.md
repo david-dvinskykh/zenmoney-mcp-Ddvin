@@ -280,20 +280,28 @@ Reminder added:
 
 - 2026-04-01 | expense  | -1200 PLN | Home | Landlord — "Rent" | every month | id: `f1e2…`
 
-Planned: 2026-04-01, 2026-05-01, 2026-06-01 (+9 more).
+Planned 13 occurrences: 2026-04-01, 2026-05-01, 2026-06-01, 2026-07-01,
+2026-08-01 (+8 more), a year ahead — the horizon an open-ended series gets,
+the same one the ZenMoney app keeps. Extend it later with add_reminder_marker.
 ```
 
 `type` picks the shape of the operation: `expense` and `income` take `account`,
 `transfer` takes `from_account` and `to_account` (and both amounts when the two
 accounts hold different currencies, as `add_transfer` does).
 
-ZenMoney expands a series into dated occurrences — reminder *markers* — on its
-own side, and returns them with the write, which is where the "Planned:" line
-comes from. `points` is the advanced knob for a series that fires more than once
-per window: positions inside the step window, counted in `interval` units from
-`start_date` and zero-based, so `interval: "day", step: 7, points: [0, 2, 4]`
-repeats weekly on the start weekday plus two and four days later. It defaults to
-`[0]` — once per window.
+A series is stored as the reminder plus one *marker* per dated occurrence, and
+ZenMoney's server does not create those markers — the client does. `add_reminder`
+therefore walks the schedule and writes the occurrences with the reminder, up to
+`end_date`, or a year ahead when the series is open-ended (the horizon the
+ZenMoney app keeps), at most 400 per write. A month or year step lands on the
+last day of a shorter month rather than rolling into the next one, so a series
+starting on the 31st keeps its month ends.
+
+`points` is the advanced knob for a series that fires more than once per window:
+positions inside the step window, counted in `interval` units from `start_date`
+and zero-based, so `interval: "day", step: 7, points: [0, 2, 4]` repeats weekly
+on the start weekday plus two and four days later. It defaults to `[0]` — once
+per window.
 
 `add_reminder_marker` adds a single occurrence to a series that already exists:
 an extra rent month, a one-off top-up. It copies the reminder's accounts,

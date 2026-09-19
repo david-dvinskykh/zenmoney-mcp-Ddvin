@@ -650,24 +650,8 @@ describe("add_reminder", () => {
     expect(sent.merchant).toBe(MERCHANT_CAFE.id);
   });
 
-  it("should report the occurrences ZenMoney expanded the series into", async () => {
+  it("should write the occurrences itself — ZenMoney does not expand a series", async () => {
     await setup();
-    vi.mocked(api.diff).mockImplementation(async (req: any) =>
-      emptyDiff({
-        reminderMarker: [
-          makeReminderMarker({
-            id: "mk-new-2",
-            reminder: req.reminder[0].id,
-            date: "2026-05-01",
-          }),
-          makeReminderMarker({
-            id: "mk-new-1",
-            reminder: req.reminder[0].id,
-            date: "2026-04-01",
-          }),
-        ],
-      })
-    );
 
     const text = getTextContent(
       await callTool("add_reminder", {
@@ -679,24 +663,103 @@ describe("add_reminder", () => {
       })
     );
 
-    expect(text).toContain("Planned: 2026-04-01, 2026-05-01");
-    expect(state.reminderMarkers).toHaveLength(2);
+    const req = vi.mocked(api.diff).mock.calls[0][0] as any;
+    const sent: ReminderMarker[] = req.reminderMarker;
+    // A year of an open-ended monthly series, the horizon the app keeps.
+    expect(sent).toHaveLength(13);
+    expect(sent[0]).toMatchObject({
+      date: "2026-04-01",
+      reminder: req.reminder[0].id,
+      state: "planned",
+      outcome: 1200,
+      outcomeAccount: "acc-checking",
+    });
+    expect(sent.at(-1)!.date).toBe("2027-04-01");
+
+    expect(state.reminderMarkers).toHaveLength(13);
+    expect(text).toContain("Planned 13 occurrences: 2026-04-01, 2026-05-01");
+    expect(text).toContain("a year ahead");
   });
 
-  it("should say so when no occurrences came back yet", async () => {
+  it("should stop a series at its end date", async () => {
     await setup();
 
     const text = getTextContent(
       await callTool("add_reminder", {
         type: "expense",
         account: "Checking",
-        amount: 1200,
+        amount: 10,
         start_date: "2026-04-01",
+        end_date: "2026-06-15",
         interval: "month",
       })
     );
 
-    expect(text).toContain("No occurrences came back with it yet");
+    const req = vi.mocked(api.diff).mock.calls[0][0] as any;
+    expect(req.reminderMarker.map((m: ReminderMarker) => m.date)).toEqual([
+      "2026-04-01",
+      "2026-05-01",
+      "2026-06-01",
+    ]);
+    expect(text).toContain("through 2026-06-15");
+  });
+
+  it("should write a single occurrence for a one-off", async () => {
+    await setup();
+
+    await callTool("add_reminder", {
+      type: "expense",
+      account: "Checking",
+      amount: 90,
+      start_date: "2026-05-02",
+    });
+
+    const req = vi.mocked(api.diff).mock.calls[0][0] as any;
+    expect(req.reminderMarker).toHaveLength(1);
+    expect(req.reminderMarker[0].date).toBe("2026-05-02");
+  });
+
+  it("should spread points across the step window", async () => {
+    await setup();
+
+    await callTool("add_reminder", {
+      type: "expense",
+      account: "Checking",
+      amount: 10,
+      start_date: "2026-04-01",
+      end_date: "2026-04-21",
+      interval: "day",
+      step: 7,
+      points: [0, 2, 4],
+    });
+
+    const req = vi.mocked(api.diff).mock.calls[0][0] as any;
+    expect(req.reminderMarker.map((m: ReminderMarker) => m.date)).toEqual([
+      "2026-04-01", "2026-04-03", "2026-04-05",
+      "2026-04-08", "2026-04-10", "2026-04-12",
+      "2026-04-15", "2026-04-17", "2026-04-19",
+    ]);
+  });
+
+  it("should clamp a month-end start instead of rolling into the next month", async () => {
+    await setup();
+
+    await callTool("add_reminder", {
+      type: "expense",
+      account: "Checking",
+      amount: 10,
+      start_date: "2026-01-31",
+      end_date: "2026-04-30",
+      interval: "month",
+    });
+
+    const req = vi.mocked(api.diff).mock.calls[0][0] as any;
+    expect(req.reminderMarker.map((m: ReminderMarker) => m.date)).toEqual([
+      "2026-01-31",
+      "2026-02-28",
+      "2026-03-31",
+      "2026-04-30",
+    ]);
   });
 
   it("should apply the rest of the write response diff", async () => {
@@ -716,10 +779,45 @@ describe("add_reminder", () => {
       start_date: "2026-04-01",
     });
 
-    // The reminder deleted elsewhere is gone, the new one stayed.
+    // The reminder deleted elsewhere is gone with its markers, the new one
+    // stayed with the single occurrence it wrote.
     expect(state.reminders.map((r) => r.id)).not.toContain("rem-rent");
     expect(state.reminders).toHaveLength(1);
-    expect(state.reminderMarkers).toHaveLength(0);
+    expect(state.reminderMarkers).toHaveLength(1);
+    expect(state.reminderMarkers[0].date).toBe("2026-04-01");
+  });
+
+  it("should reject a date that is not on the calendar", async () => {
+    await setup();
+
+    const result = await callTool("add_reminder", {
+      type: "expense",
+      account: "Checking",
+      amount: 10,
+      start_date: "2026-02-29",
+      interval: "year",
+    });
+
+    expect(result.isError).toBe(true);
+    expect(getTextContent(result)).toContain("not a date on the calendar");
+    expect(api.diff).not.toHaveBeenCalled();
+  });
+
+  it("should cap one write instead of materialising a decade", async () => {
+    await setup();
+
+    await callTool("add_reminder", {
+      type: "expense",
+      account: "Checking",
+      amount: 10,
+      start_date: "2026-04-01",
+      end_date: "2036-04-01",
+      interval: "day",
+    });
+
+    const req = vi.mocked(api.diff).mock.calls[0][0] as any;
+    expect(req.reminderMarker).toHaveLength(400);
+    expect(req.reminderMarker[0].date).toBe("2026-04-01");
   });
 
   it("should reject an unknown category rather than dropping it", async () => {

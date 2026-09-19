@@ -64,7 +64,7 @@ All 17 tools are ported with the same names, arguments and output text:
 `update_transaction`, `delete_transaction`, `delete_object`, `list_reminders`,
 `add_reminder`, `add_reminder_marker`, `delete_reminder`, `suggest_category`.
 
-The behaviours the TypeScript tests pin down are pinned here too (51 Go tests):
+The behaviours the TypeScript tests pin down are pinned here too (55 Go tests):
 incremental sync from the cached timestamp, the additive merge that keeps entity
 order, deletions cascading from accounts, tags and reminders, the two-step
 `confirm` flow on every destructive tool, the debt currency invariant, and

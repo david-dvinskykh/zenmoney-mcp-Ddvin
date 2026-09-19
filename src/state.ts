@@ -196,19 +196,23 @@ export class ZenState {
   }
 
   /**
-   * Record a reminder that was just pushed to ZenMoney. Same contract as
-   * `applyLocalTransaction`: the optimistic copy goes in first so the server's
-   * echo replaces it, then the whole response diff is applied.
-   *
-   * The occurrences are not written here — ZenMoney expands the series into
-   * `reminderMarker`s itself and returns them in the same response.
+   * Record a reminder and the occurrences pushed with it. Same contract as
+   * `applyLocalTransaction`: the optimistic copies go in first so the server's
+   * echo replaces them, then the whole response diff is applied.
    */
   async applyLocalReminder(
     reminder: Reminder,
+    markers: ReminderMarker[],
     resp: DiffResponse
   ): Promise<void> {
     this.reminders = this.reminders.filter((r) => r.id !== reminder.id);
     this.reminders.push(reminder);
+
+    const pushed = new Set(markers.map((m) => m.id));
+    this.reminderMarkers = this.reminderMarkers
+      .filter((m) => !pushed.has(m.id))
+      .concat(markers);
+
     this.applyDiff(resp);
     await this.persist();
   }

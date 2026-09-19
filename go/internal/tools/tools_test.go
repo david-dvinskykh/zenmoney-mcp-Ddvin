@@ -749,6 +749,10 @@ func TestAddReminderRejectsBadArguments(t *testing.T) {
 			"type": "expense", "account": "Cash PLN", "amount": 10,
 			"start_date": "2026-04-01", "interval": "month", "category": "Yachts",
 		}, "not found"},
+		{"date off the calendar", map[string]any{
+			"type": "expense", "account": "Cash PLN", "amount": 10,
+			"start_date": "2026-02-29", "interval": "year",
+		}, "not a date on the calendar"},
 	}
 
 	for _, tc := range cases {
@@ -779,36 +783,131 @@ func TestAddReminderSortsAndDeduplicatesPoints(t *testing.T) {
 	}
 }
 
-func TestAddReminderReportsTheOccurrencesItGotBack(t *testing.T) {
-	h := newHarnessWith(t, fixture(), func(req zen.DiffRequest) zen.DiffResponse {
-		return zen.DiffResponse{
-			ServerTimestamp: req.ServerTimestamp + 1,
-			ReminderMarker: []zen.ReminderMarker{
-				{ID: "mk-new-2", Reminder: req.Reminder[0].ID, State: "planned", Date: "2026-05-10"},
-				{ID: "mk-new-1", Reminder: req.Reminder[0].ID, State: "planned", Date: "2026-04-10"},
-			},
-		}
-	})
-
-	out := h.call("add_reminder", map[string]any{
-		"type": "expense", "account": "Cash PLN", "amount": 3200,
-		"start_date": "2026-04-10", "interval": "month",
-	})
-	if !strings.Contains(out, "Planned: 2026-04-10, 2026-05-10") {
-		t.Errorf("the expanded dates should be reported:\n%s", out)
-	}
-}
-
-func TestAddReminderSaysWhenNoOccurrencesCameBack(t *testing.T) {
+func TestAddReminderWritesItsOwnOccurrences(t *testing.T) {
 	h := newHarness(t, fixture())
 
 	out := h.call("add_reminder", map[string]any{
 		"type": "expense", "account": "Cash PLN", "amount": 3200,
 		"start_date": "2026-04-10", "interval": "month",
 	})
-	if !strings.Contains(out, "No occurrences came back with it yet") {
-		t.Errorf("an unexpanded series should say so:\n%s", out)
+
+	// ZenMoney does not expand a series, so the client writes a year of it.
+	sent := (*h.pushed)[0].ReminderMarker
+	if len(sent) != 13 {
+		t.Fatalf("an open-ended monthly series should get a year of occurrences, got %d", len(sent))
 	}
+	if sent[0].Date != "2026-04-10" || sent[12].Date != "2027-04-10" {
+		t.Errorf("unexpected span: %s … %s", sent[0].Date, sent[12].Date)
+	}
+	if sent[0].Reminder != (*h.pushed)[0].Reminder[0].ID || sent[0].State != "planned" {
+		t.Errorf("an occurrence must be anchored to the series and planned: %+v", sent[0])
+	}
+	if sent[0].Outcome != 3200 || sent[0].OutcomeAccount != "cash" {
+		t.Errorf("an occurrence carries the reminder's operation: %+v", sent[0])
+	}
+	if !strings.Contains(out, "Planned 13 occurrences: 2026-04-10, 2026-05-10") ||
+		!strings.Contains(out, "a year ahead") {
+		t.Errorf("unexpected report:\n%s", out)
+	}
+}
+
+func TestAddReminderStopsAtTheEndDate(t *testing.T) {
+	h := newHarness(t, fixture())
+
+	out := h.call("add_reminder", map[string]any{
+		"type": "expense", "account": "Cash PLN", "amount": 10,
+		"start_date": "2026-04-01", "end_date": "2026-06-15", "interval": "month",
+	})
+
+	got := markerDates((*h.pushed)[0].ReminderMarker)
+	want := []string{"2026-04-01", "2026-05-01", "2026-06-01"}
+	if !equalStrings(got, want) {
+		t.Errorf("occurrences = %v, want %v", got, want)
+	}
+	if !strings.Contains(out, "through 2026-06-15") {
+		t.Errorf("the report should name the end date:\n%s", out)
+	}
+}
+
+func TestAddReminderSpreadsPointsAcrossTheWindow(t *testing.T) {
+	h := newHarness(t, fixture())
+
+	h.call("add_reminder", map[string]any{
+		"type": "expense", "account": "Cash PLN", "amount": 10,
+		"start_date": "2026-04-01", "end_date": "2026-04-21",
+		"interval": "day", "step": 7, "points": []any{0, 2, 4},
+	})
+
+	got := markerDates((*h.pushed)[0].ReminderMarker)
+	want := []string{
+		"2026-04-01", "2026-04-03", "2026-04-05",
+		"2026-04-08", "2026-04-10", "2026-04-12",
+		"2026-04-15", "2026-04-17", "2026-04-19",
+	}
+	if !equalStrings(got, want) {
+		t.Errorf("occurrences = %v, want %v", got, want)
+	}
+}
+
+func TestAddReminderClampsAMonthEndStart(t *testing.T) {
+	h := newHarness(t, fixture())
+
+	h.call("add_reminder", map[string]any{
+		"type": "expense", "account": "Cash PLN", "amount": 10,
+		"start_date": "2026-01-31", "end_date": "2026-04-30", "interval": "month",
+	})
+
+	got := markerDates((*h.pushed)[0].ReminderMarker)
+	want := []string{"2026-01-31", "2026-02-28", "2026-03-31", "2026-04-30"}
+	if !equalStrings(got, want) {
+		t.Errorf("a month-end start must clamp, not roll over: %v, want %v", got, want)
+	}
+}
+
+func TestAddReminderCapsOneWrite(t *testing.T) {
+	h := newHarness(t, fixture())
+
+	h.call("add_reminder", map[string]any{
+		"type": "expense", "account": "Cash PLN", "amount": 10,
+		"start_date": "2026-04-01", "end_date": "2036-04-01", "interval": "day",
+	})
+
+	if got := len((*h.pushed)[0].ReminderMarker); got != 400 {
+		t.Errorf("one write should be capped at 400 occurrences, got %d", got)
+	}
+}
+
+func TestAddReminderWritesOneOccurrenceForAOneOff(t *testing.T) {
+	h := newHarness(t, fixture())
+
+	h.call("add_reminder", map[string]any{
+		"type": "expense", "account": "Cash PLN", "amount": 99, "start_date": "2026-05-05",
+	})
+
+	got := markerDates((*h.pushed)[0].ReminderMarker)
+	if !equalStrings(got, []string{"2026-05-05"}) {
+		t.Errorf("a one-off gets exactly its own date, got %v", got)
+	}
+}
+
+func markerDates(markers []zen.ReminderMarker) []string {
+	dates := make([]string, 0, len(markers))
+	for _, m := range markers {
+		dates = append(dates, m.Date)
+	}
+	return dates
+}
+
+func equalStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func TestAddReminderMarkerCopiesTheReminder(t *testing.T) {

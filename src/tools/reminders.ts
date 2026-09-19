@@ -275,6 +275,17 @@ export function registerReminderTools(
       comment,
       notify,
     }) => {
+      const badDate = [
+        ["start_date", start_date],
+        ["end_date", end_date],
+      ].find(([, value]) => value !== undefined && !isCalendarDate(value!));
+      if (badDate) {
+        return textResult(
+          `${badDate[0]} is ${badDate[1]}, which is not a date on the calendar.`,
+          true
+        );
+      }
+
       const syncError = await ensureSynced(state);
       if (syncError) return syncError;
 
@@ -335,18 +346,24 @@ export function registerReminderTools(
         notify,
       };
 
+      const dates = occurrenceDates(reminder.startDate, schedule);
+      const markers: ReminderMarker[] = dates.map((date) =>
+        occurrenceOf(reminder, date, now)
+      );
+
       try {
         const resp = await api.diff({
           currentClientTimestamp: now,
           serverTimestamp: state.serverTimestamp,
           reminder: [reminder],
+          reminderMarker: markers,
         });
 
-        await state.applyLocalReminder(reminder, resp);
+        await state.applyLocalReminder(reminder, markers, resp);
 
-        const dates = plannedDates(state, reminder.id);
+        const planned = plannedDates(state, reminder.id);
         return textResult(
-          `Reminder added:\n\n- ${formatReminderLine(state, reminder, dates[0] ?? null)}\n\n${describeOccurrences(dates)}`
+          `Reminder added:\n\n- ${formatReminderLine(state, reminder, planned[0] ?? null)}\n\n${describeOccurrences(planned, schedule)}`
         );
       } catch (error) {
         return textResult(
@@ -415,6 +432,13 @@ export function registerReminderTools(
       comment,
       notify,
     }) => {
+      if (!isCalendarDate(date)) {
+        return textResult(
+          `date is ${date}, which is not a date on the calendar.`,
+          true
+        );
+      }
+
       const syncError = await ensureSynced(state);
       if (syncError) return syncError;
 
@@ -627,21 +651,22 @@ function plannedDates(state: ZenState, reminderId: string): string[] {
     .sort();
 }
 
-/**
- * Report the dates a new reminder came back with. ZenMoney expands the series
- * itself, so an empty list is not an error — the markers simply have not
- * arrived yet.
- */
-function describeOccurrences(dates: string[]): string {
+/** Report the occurrences written with the reminder, and where they stop. */
+function describeOccurrences(dates: string[], schedule: Schedule): string {
   if (dates.length === 0) {
-    return (
-      "No occurrences came back with it yet — ZenMoney expands a series on its own side. " +
-      "Run sync_data, or list_reminders in a moment, to see the dates."
-    );
+    return "No occurrences were written — nothing in the schedule falls inside its own end date.";
   }
+
   const shown = dates.slice(0, 5).join(", ");
   const rest = dates.length - 5;
-  return `Planned: ${shown}${rest > 0 ? ` (+${rest} more)` : ""}.`;
+  const list = `Planned ${dates.length} occurrence${dates.length > 1 ? "s" : ""}: ${shown}${rest > 0 ? ` (+${rest} more)` : ""}`;
+
+  if (!schedule.interval) return `${list}.`;
+  if (schedule.endDate) return `${list}, through ${schedule.endDate}.`;
+  return (
+    `${list}, a year ahead — the horizon an open-ended series gets, the same one ` +
+    `the ZenMoney app keeps. Extend it later with add_reminder_marker.`
+  );
 }
 
 /** One-line rendering of a single occurrence, matching the reminder's own. */
@@ -863,4 +888,120 @@ function overrideAmounts(
   }
 
   return { income, outcome };
+}
+
+/**
+ * How far an open-ended series is written out. ZenMoney's own app materializes
+ * roughly a year of occurrences — a weekly reminder in a live account carries
+ * 51 planned ones — and nothing on the server extends a series later, so this
+ * is the horizon a series gets until someone adds to it.
+ */
+const HORIZON_MONTHS = 12;
+
+/** Ceiling on one write, so a daily open-ended series cannot run away. */
+const MAX_OCCURRENCES = 400;
+
+/**
+ * Whether an ISO date names a day that exists. The shape check the schema does
+ * accepts 2026-02-29 in a year that has no 29th of February, and a schedule
+ * starting on a day that is not there has no dates to walk.
+ */
+function isCalendarDate(date: string): boolean {
+  const [y, m, d] = date.split("-").map(Number);
+  const parsed = new Date(Date.UTC(y, m - 1, d));
+  return (
+    parsed.getUTCFullYear() === y &&
+    parsed.getUTCMonth() === m - 1 &&
+    parsed.getUTCDate() === d
+  );
+}
+
+/**
+ * Add `n` interval units to an ISO date. A month or year step clamps to the
+ * end of the target month, so the 31st becomes the 28th in February instead of
+ * rolling into March the way Date arithmetic would.
+ */
+export function addInterval(
+  date: string,
+  interval: string,
+  n: number
+): string {
+  const [y, m, d] = date.split("-").map(Number);
+
+  if (interval === "day" || interval === "week") {
+    const days = interval === "week" ? n * 7 : n;
+    return new Date(Date.UTC(y, m - 1, d) + days * 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+  }
+
+  const months = (interval === "year" ? n * 12 : n) + (y * 12 + m - 1);
+  const year = Math.floor(months / 12);
+  const month = months - year * 12;
+  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  return [
+    String(year).padStart(4, "0"),
+    String(month + 1).padStart(2, "0"),
+    String(Math.min(d, lastDay)).padStart(2, "0"),
+  ].join("-");
+}
+
+/**
+ * The dates a schedule fires on, soonest first.
+ *
+ * ZenMoney does not expand a reminder into occurrences — that is the client's
+ * job, which is why a series pushed on its own shows up with nothing planned.
+ * Each window is `step` intervals long and starts at `startDate`; `points` are
+ * offsets inside it, counted in the same interval unit.
+ */
+export function occurrenceDates(
+  startDate: string,
+  schedule: Schedule
+): string[] {
+  if (!schedule.interval) return [startDate];
+
+  const interval = schedule.interval;
+  const step = schedule.step ?? 1;
+  const points = schedule.points ?? [0];
+  const limit =
+    schedule.endDate ?? addInterval(startDate, "month", HORIZON_MONTHS);
+
+  const dates: string[] = [];
+  for (let window = 0; dates.length < MAX_OCCURRENCES; window++) {
+    const windowStart = addInterval(startDate, interval, window * step);
+    if (windowStart > limit) break;
+
+    for (const point of points) {
+      const date = addInterval(windowStart, interval, point);
+      if (date <= limit && dates.length < MAX_OCCURRENCES) dates.push(date);
+    }
+  }
+  return dates;
+}
+
+/** One occurrence of a reminder, carrying the reminder's own operation. */
+function occurrenceOf(
+  r: Reminder,
+  date: string,
+  stamp: number
+): ReminderMarker {
+  return {
+    id: randomUUID(),
+    changed: stamp,
+    user: r.user,
+    incomeInstrument: r.incomeInstrument,
+    incomeAccount: r.incomeAccount,
+    income: r.income,
+    outcomeInstrument: r.outcomeInstrument,
+    outcomeAccount: r.outcomeAccount,
+    outcome: r.outcome,
+    tag: r.tag,
+    merchant: r.merchant,
+    payee: r.payee,
+    comment: r.comment,
+    date,
+    reminder: r.id,
+    state: "planned",
+    notify: r.notify,
+  };
 }

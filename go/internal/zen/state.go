@@ -320,13 +320,10 @@ func (s *State) ApplyLocalTransaction(t Transaction, resp *DiffResponse) {
 	s.Persist()
 }
 
-// ApplyLocalReminder records a reminder that was just pushed to ZenMoney. Same
-// contract as ApplyLocalTransaction: the optimistic copy goes in first so the
-// server's echo replaces it, then the whole response diff is applied.
-//
-// The occurrences are not written here — ZenMoney expands the series into
-// reminderMarkers itself and returns them in the same response.
-func (s *State) ApplyLocalReminder(r Reminder, resp *DiffResponse) {
+// ApplyLocalReminder records a reminder and the occurrences pushed with it.
+// Same contract as ApplyLocalTransaction: the optimistic copies go in first so
+// the server's echo replaces them, then the whole response diff is applied.
+func (s *State) ApplyLocalReminder(r Reminder, markers []ReminderMarker, resp *DiffResponse) {
 	s.mu.Lock()
 	kept := make([]Reminder, 0, len(s.reminders)+1)
 	for _, existing := range s.reminders {
@@ -335,6 +332,19 @@ func (s *State) ApplyLocalReminder(r Reminder, resp *DiffResponse) {
 		}
 	}
 	s.reminders = append(kept, r)
+
+	pushed := make(map[string]bool, len(markers))
+	for _, m := range markers {
+		pushed[m.ID] = true
+	}
+	keptMarkers := make([]ReminderMarker, 0, len(s.reminderMarkers)+len(markers))
+	for _, existing := range s.reminderMarkers {
+		if !pushed[existing.ID] {
+			keptMarkers = append(keptMarkers, existing)
+		}
+	}
+	s.reminderMarkers = append(keptMarkers, markers...)
+
 	s.applyDiffLocked(resp)
 	s.mu.Unlock()
 

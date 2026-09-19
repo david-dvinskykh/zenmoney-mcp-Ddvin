@@ -191,8 +191,9 @@ type Reminder struct {
 	// repeats weekly on the start weekday and two and four days after it. [0]
 	// on its own means "once per window".
 	//
-	// add_reminder writes this field; nothing reads it back. Concrete dates
-	// come from the markers, which ZenMoney expands the series into.
+	// add_reminder writes this field and walks it to produce the occurrences:
+	// ZenMoney does not expand a series, so the markers are the client's to
+	// create. Nothing reads the field back — dates come from the markers.
 	Points    []int64 `json:"points"`
 	StartDate string  `json:"startDate"`
 	EndDate   *string `json:"endDate"`
