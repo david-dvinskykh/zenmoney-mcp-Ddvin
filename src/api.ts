@@ -11,8 +11,8 @@ export interface DiffRequest {
   tag?: any[];
   merchant?: any[];
   budget?: any[];
-  reminder?: any[];
-  reminderMarker?: any[];
+  reminder?: Reminder[];
+  reminderMarker?: ReminderMarker[];
   transaction?: any[];
   deletion?: Deletion[];
 }
@@ -38,8 +38,8 @@ export interface DiffResponse {
   tag: Tag[];
   merchant: Merchant[];
   budget: any[];
-  reminder: any[];
-  reminderMarker: any[];
+  reminder: Reminder[];
+  reminderMarker: ReminderMarker[];
   transaction: Transaction[];
   deletion: Deletion[];
 }
@@ -147,6 +147,69 @@ export interface Transaction {
   longitude: number | null;
   reminderMarker: string | null;
   qrCode: string | null;
+}
+
+/**
+ * A planned transaction: either a one-off entry dated in the future or the
+ * template of a repeating series. ZenMoney expands it into `ReminderMarker`
+ * occurrences, so the reminder itself carries the schedule, not the dates.
+ */
+export interface Reminder {
+  id: string;
+  changed: number;
+  user: number;
+  incomeInstrument: number;
+  incomeAccount: string;
+  income: number;
+  outcomeInstrument: number;
+  outcomeAccount: string;
+  outcome: number;
+  tag: string[] | null;
+  merchant: string | null;
+  payee: string | null;
+  comment: string | null;
+  /** "day" | "week" | "month" | "year", or null for a one-off reminder. */
+  interval: string | null;
+  /** How many intervals between repeats: 2 with "week" means fortnightly. */
+  step: number | null;
+  /**
+   * Positions inside the step window the series fires on, counted in
+   * `interval` units from `startDate` and zero-based, so every point is below
+   * `step`. The documented example — `interval: "day"`, `step: 7`,
+   * `points: [0, 2, 4]` — repeats weekly on the start weekday and two and four
+   * days after it. `[0]` on its own means "once per window".
+   *
+   * add_reminder writes this field; nothing reads it back. Concrete dates come
+   * from the markers, which ZenMoney expands the series into.
+   */
+  points: number[] | null;
+  startDate: string;
+  endDate: string | null;
+  notify: boolean;
+}
+
+/** One occurrence of a reminder on a specific date. */
+export interface ReminderMarker {
+  id: string;
+  changed: number;
+  user: number;
+  incomeInstrument: number;
+  incomeAccount: string;
+  income: number;
+  outcomeInstrument: number;
+  outcomeAccount: string;
+  outcome: number;
+  tag: string[] | null;
+  merchant: string | null;
+  payee: string | null;
+  comment: string | null;
+  date: string;
+  /** Id of the reminder this occurrence belongs to. */
+  reminder: string;
+  /** "planned" until it is turned into a transaction or dismissed. */
+  state: string;
+  notify: boolean;
+  isForecast?: boolean;
 }
 
 export interface SuggestRequest {

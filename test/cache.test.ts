@@ -78,6 +78,8 @@ describe("StateCache", () => {
       instruments: [],
       transactions: [tx],
       users: [],
+      reminders: [],
+      reminderMarkers: [],
     });
 
     const loaded = await cache.load();
@@ -197,6 +199,8 @@ describe("ZenState persistence", () => {
         makeTransaction({ id: "tx-gone", deleted: true }),
       ],
       users: [],
+      reminders: [],
+      reminderMarkers: [],
     });
 
     const state = new ZenState(createApi(), new StateCache("t", dir));
@@ -403,5 +407,7 @@ function emptySnapshot() {
     instruments: [],
     transactions: [],
     users: [],
+    reminders: [],
+    reminderMarkers: [],
   };
 }

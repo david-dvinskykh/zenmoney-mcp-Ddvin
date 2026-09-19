@@ -18,6 +18,10 @@ MCP server for [ZenMoney](https://zenmoney.ru) — access your personal finance 
 | `update_transaction` | Edit an existing transaction (date, amount, account, category, payee, comment) |
 | `delete_transaction` | Delete transactions — expenses, income, transfers, debts |
 | `delete_object` | Delete an account, a category, or a merchant |
+| `list_reminders` | List planned transactions — recurring and one-off |
+| `add_reminder` | Plan a transaction ahead — one-off or a repeating series |
+| `add_reminder_marker` | Add one more planned occurrence to an existing series |
+| `delete_reminder` | Delete a planned transaction and its future occurrences |
 | `suggest_category` | Get auto-suggested category for a payee |
 
 **No manual sync needed.** Any tool syncs on demand if the data isn't loaded yet,
@@ -189,7 +193,8 @@ Once configured, start a conversation and ask your AI client to:
 5. **Lend and borrow** — "I lent Masha 500 RUB in cash today", "Masha paid me back 200"
 6. **Edit** — "That coffee was 350, not 500", "Move yesterday's lunch to the Restaurants category"
 7. **Delete** — "Delete yesterday's duplicate coffee expense", "Remove that transfer to Savings"
-8. **Refresh** — "Sync my ZenMoney data" (only needed to pull changes mid-conversation)
+8. **Plan** — "What payments are coming up?", "Cancel the gym reminder"
+9. **Refresh** — "Sync my ZenMoney data" (only needed to pull changes mid-conversation)
 
 ## Debts
 
@@ -258,6 +263,43 @@ merchant (ZenMoney shows the merchant in preference to the raw payee), so it is
 re-matched by name or cleared. Editing overwrites the old values — there is no
 undo.
 
+## Planning ahead
+
+`add_reminder` creates a planned transaction. Leave `interval` out and it is a
+one-off dated entry; pass `interval` (`day`, `week`, `month`, `year`) and it
+repeats. `step` says how many intervals apart the repeats are, so
+`interval: "week", step: 2` is fortnightly:
+
+```
+add_reminder({
+  type: "expense", account: "Checking", amount: 1200,
+  start_date: "2026-04-01", interval: "month", comment: "Rent"
+})
+
+Reminder added:
+
+- 2026-04-01 | expense  | -1200 PLN | Home | Landlord — "Rent" | every month | id: `f1e2…`
+
+Planned: 2026-04-01, 2026-05-01, 2026-06-01 (+9 more).
+```
+
+`type` picks the shape of the operation: `expense` and `income` take `account`,
+`transfer` takes `from_account` and `to_account` (and both amounts when the two
+accounts hold different currencies, as `add_transfer` does).
+
+ZenMoney expands a series into dated occurrences — reminder *markers* — on its
+own side, and returns them with the write, which is where the "Planned:" line
+comes from. `points` is the advanced knob for a series that fires more than once
+per window: positions inside the step window, counted in `interval` units from
+`start_date` and zero-based, so `interval: "day", step: 7, points: [0, 2, 4]`
+repeats weekly on the start weekday plus two and four days later. It defaults to
+`[0]` — once per window.
+
+`add_reminder_marker` adds a single occurrence to a series that already exists:
+an extra rent month, a one-off top-up. It copies the reminder's accounts,
+amount, category, payee and comment unless you override them, and refuses to
+plan a day the series is already planned for.
+
 ## Deleting data
 
 `delete_transaction` removes transactions of any kind — expenses, income,
@@ -270,7 +312,14 @@ transaction with the debt account on one side). It takes the ids that
 account also deletes every transaction booked on it; deleting a category keeps
 the transactions and leaves them uncategorized.
 
-Both are two-step. The first call reports exactly what would go — including the
+`delete_reminder` removes a planned transaction. For a recurring series that
+means the series itself and every occurrence still planned; transactions
+already created from past occurrences stay. It takes an id from
+`list_reminders`, or text matched against the reminder's payee, comment,
+merchant and category — when that text matches more than one reminder the tool
+lists the candidates and deletes nothing.
+
+All three are two-step. The first call reports exactly what would go — including the
 knock-on effects — and changes nothing:
 
 ```
