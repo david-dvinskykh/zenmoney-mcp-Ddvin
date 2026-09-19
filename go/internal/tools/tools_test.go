@@ -27,6 +27,18 @@ type harness struct {
 
 func newHarness(t *testing.T, initial zen.DiffResponse) *harness {
 	t.Helper()
+	return newHarnessWith(t, initial, nil)
+}
+
+// newHarnessWith is newHarness with a say in how writes are answered, for tests
+// that need a write response carrying more than a fresh timestamp. The answer is
+// fixed before the stub starts serving, so it stays race-free.
+func newHarnessWith(
+	t *testing.T,
+	initial zen.DiffResponse,
+	writeResponse func(zen.DiffRequest) zen.DiffResponse,
+) *harness {
+	t.Helper()
 
 	var pushed []zen.DiffRequest
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -37,8 +49,13 @@ func newHarness(t *testing.T, initial zen.DiffResponse) *harness {
 		var req zen.DiffRequest
 		_ = json.NewDecoder(r.Body).Decode(&req)
 
-		if len(req.Transaction) > 0 || len(req.Deletion) > 0 {
+		if len(req.Transaction) > 0 || len(req.Deletion) > 0 ||
+			len(req.Reminder) > 0 || len(req.ReminderMarker) > 0 {
 			pushed = append(pushed, req)
+			if writeResponse != nil {
+				_ = json.NewEncoder(w).Encode(writeResponse(req))
+				return
+			}
 			// A write response is a diff since the caller's timestamp. The stub
 			// reports nothing new, only a fresh timestamp.
 			_ = json.NewEncoder(w).Encode(zen.DiffResponse{ServerTimestamp: req.ServerTimestamp + 1})
@@ -595,5 +612,334 @@ func TestToolsReportASyncFailureAsAToolError(t *testing.T) {
 	text := res.Content[0].(*mcp.TextContent).Text
 	if !strings.Contains(text, "Automatic sync failed") {
 		t.Errorf("unexpected message: %s", text)
+	}
+}
+
+func TestAddReminderCreatesARecurringSeries(t *testing.T) {
+	h := newHarness(t, fixture())
+
+	out := h.call("add_reminder", map[string]any{
+		"type":       "expense",
+		"account":    "Cash PLN",
+		"amount":     3200,
+		"start_date": "2026-04-10",
+		"interval":   "month",
+		"category":   "Food",
+		"comment":    "Rent",
+	})
+	if !strings.Contains(out, "Reminder added") {
+		t.Errorf("unexpected result:\n%s", out)
+	}
+
+	if len(*h.pushed) != 1 {
+		t.Fatalf("expected exactly one write, got %d", len(*h.pushed))
+	}
+	sent := (*h.pushed)[0].Reminder[0]
+	if sent.Outcome != 3200 || sent.Income != 0 {
+		t.Errorf("an expense reminder should carry only an outcome, got %+v", sent)
+	}
+	if sent.OutcomeAccount != "cash" || sent.IncomeAccount != "cash" {
+		t.Errorf("a one-sided reminder sits on one account, got %+v", sent)
+	}
+	if sent.Interval == nil || *sent.Interval != "month" {
+		t.Errorf("interval should be month, got %v", sent.Interval)
+	}
+	if sent.Step == nil || *sent.Step != 1 {
+		t.Errorf("step should default to 1, got %v", sent.Step)
+	}
+	if len(sent.Points) != 1 || sent.Points[0] != 0 {
+		t.Errorf("points should default to [0], got %v", sent.Points)
+	}
+	if sent.EndDate != nil {
+		t.Errorf("an open-ended series has no end date, got %v", *sent.EndDate)
+	}
+	if !sent.Notify {
+		t.Error("notify should default to true, as in the app")
+	}
+	if len(sent.Tag) != 1 || sent.Tag[0] != "food" {
+		t.Errorf("the category should be resolved, got %v", sent.Tag)
+	}
+
+	if out := h.call("list_reminders", nil); !strings.Contains(out, sent.ID) {
+		t.Error("the new reminder should be in local state")
+	}
+}
+
+func TestAddReminderKeepsAOneOffFromRepeating(t *testing.T) {
+	h := newHarness(t, fixture())
+
+	h.call("add_reminder", map[string]any{
+		"type": "expense", "account": "Cash PLN", "amount": 99, "start_date": "2026-05-05",
+	})
+
+	sent := (*h.pushed)[0].Reminder[0]
+	if sent.Interval != nil || sent.Step != nil || sent.Points != nil {
+		t.Errorf("a one-off carries no schedule, got %+v", sent)
+	}
+	// It ends the day it starts, so nothing can expand it further.
+	if sent.EndDate == nil || *sent.EndDate != "2026-05-05" {
+		t.Errorf("a one-off should end on its start date, got %v", sent.EndDate)
+	}
+}
+
+func TestAddReminderCarriesBothSidesOfATransfer(t *testing.T) {
+	h := newHarness(t, fixture())
+
+	msg := h.callErr("add_reminder", map[string]any{
+		"type": "transfer", "from_account": "Cash PLN", "to_account": "Euro card",
+		"amount": 100, "start_date": "2026-04-05", "interval": "month",
+	})
+	if !strings.Contains(msg, "income_amount") {
+		t.Errorf("a cross-currency transfer needs both amounts: %s", msg)
+	}
+	if len(*h.pushed) != 0 {
+		t.Fatal("nothing should have been sent")
+	}
+
+	h.call("add_reminder", map[string]any{
+		"type": "transfer", "from_account": "Cash PLN", "to_account": "Euro card",
+		"outcome_amount": 110, "income_amount": 100,
+		"start_date": "2026-04-05", "interval": "month",
+	})
+
+	sent := (*h.pushed)[0].Reminder[0]
+	if sent.Outcome != 110 || sent.OutcomeInstrument != 1 {
+		t.Errorf("the source leg is wrong: %+v", sent)
+	}
+	if sent.Income != 100 || sent.IncomeInstrument != 2 {
+		t.Errorf("the destination leg is wrong: %+v", sent)
+	}
+}
+
+func TestAddReminderRejectsBadArguments(t *testing.T) {
+	cases := []struct {
+		name string
+		args map[string]any
+		want string
+	}{
+		{"unknown type", map[string]any{
+			"type": "gift", "account": "Cash PLN", "amount": 10, "start_date": "2026-04-01",
+		}, "Use one of: expense, income, transfer"},
+		{"bad date", map[string]any{
+			"type": "expense", "account": "Cash PLN", "amount": 10, "start_date": "01.04.2026",
+		}, "YYYY-MM-DD"},
+		{"unknown account", map[string]any{
+			"type": "expense", "account": "Nowhere", "amount": 10, "start_date": "2026-04-01",
+		}, "not found"},
+		{"transfer without both accounts", map[string]any{
+			"type": "transfer", "account": "Cash PLN", "amount": 10, "start_date": "2026-04-01",
+		}, "from_account"},
+		{"step without interval", map[string]any{
+			"type": "expense", "account": "Cash PLN", "amount": 10,
+			"start_date": "2026-04-01", "step": 2,
+		}, "repeating reminder"},
+		{"unknown interval", map[string]any{
+			"type": "expense", "account": "Cash PLN", "amount": 10,
+			"start_date": "2026-04-01", "interval": "fortnight",
+		}, "Use one of: day, week, month, year"},
+		{"point outside the window", map[string]any{
+			"type": "expense", "account": "Cash PLN", "amount": 10, "start_date": "2026-04-01",
+			"interval": "day", "step": 7, "points": []any{0, 9},
+		}, "0…6"},
+		{"end before start", map[string]any{
+			"type": "expense", "account": "Cash PLN", "amount": 10,
+			"start_date": "2026-04-01", "end_date": "2026-03-01", "interval": "month",
+		}, "on or after"},
+		{"unknown category", map[string]any{
+			"type": "expense", "account": "Cash PLN", "amount": 10,
+			"start_date": "2026-04-01", "interval": "month", "category": "Yachts",
+		}, "not found"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t, fixture())
+			msg := h.callErr("add_reminder", tc.args)
+			if !strings.Contains(msg, tc.want) {
+				t.Errorf("expected %q in the error, got: %s", tc.want, msg)
+			}
+			if len(*h.pushed) != 0 {
+				t.Error("a rejected reminder must not be sent")
+			}
+		})
+	}
+}
+
+func TestAddReminderSortsAndDeduplicatesPoints(t *testing.T) {
+	h := newHarness(t, fixture())
+
+	h.call("add_reminder", map[string]any{
+		"type": "expense", "account": "Cash PLN", "amount": 10, "start_date": "2026-04-01",
+		"interval": "day", "step": 7, "points": []any{4, 0, 4, 2},
+	})
+
+	got := (*h.pushed)[0].Reminder[0].Points
+	if len(got) != 3 || got[0] != 0 || got[1] != 2 || got[2] != 4 {
+		t.Errorf("points should be sorted and deduplicated, got %v", got)
+	}
+}
+
+func TestAddReminderReportsTheOccurrencesItGotBack(t *testing.T) {
+	h := newHarnessWith(t, fixture(), func(req zen.DiffRequest) zen.DiffResponse {
+		return zen.DiffResponse{
+			ServerTimestamp: req.ServerTimestamp + 1,
+			ReminderMarker: []zen.ReminderMarker{
+				{ID: "mk-new-2", Reminder: req.Reminder[0].ID, State: "planned", Date: "2026-05-10"},
+				{ID: "mk-new-1", Reminder: req.Reminder[0].ID, State: "planned", Date: "2026-04-10"},
+			},
+		}
+	})
+
+	out := h.call("add_reminder", map[string]any{
+		"type": "expense", "account": "Cash PLN", "amount": 3200,
+		"start_date": "2026-04-10", "interval": "month",
+	})
+	if !strings.Contains(out, "Planned: 2026-04-10, 2026-05-10") {
+		t.Errorf("the expanded dates should be reported:\n%s", out)
+	}
+}
+
+func TestAddReminderSaysWhenNoOccurrencesCameBack(t *testing.T) {
+	h := newHarness(t, fixture())
+
+	out := h.call("add_reminder", map[string]any{
+		"type": "expense", "account": "Cash PLN", "amount": 3200,
+		"start_date": "2026-04-10", "interval": "month",
+	})
+	if !strings.Contains(out, "No occurrences came back with it yet") {
+		t.Errorf("an unexpanded series should say so:\n%s", out)
+	}
+}
+
+func TestAddReminderMarkerCopiesTheReminder(t *testing.T) {
+	h := newHarness(t, fixture())
+
+	out := h.call("add_reminder_marker", map[string]any{
+		"reminder": "r-rent", "date": "2099-06-10",
+	})
+	if !strings.Contains(out, "Occurrence added") {
+		t.Errorf("unexpected result:\n%s", out)
+	}
+
+	sent := (*h.pushed)[0].ReminderMarker[0]
+	if sent.Reminder != "r-rent" || sent.Date != "2099-06-10" || sent.State != "planned" {
+		t.Errorf("the occurrence is not anchored to the series: %+v", sent)
+	}
+	if sent.Outcome != 3200 || sent.OutcomeAccount != "cash" {
+		t.Errorf("the reminder's operation should be copied: %+v", sent)
+	}
+	if sent.Payee == nil || *sent.Payee != "Landlord" {
+		t.Errorf("the payee should be copied, got %v", sent.Payee)
+	}
+
+	if out := h.call("list_reminders", nil); !strings.Contains(out, "2099-04-10") {
+		t.Error("the series should still list its soonest occurrence")
+	}
+}
+
+func TestAddReminderMarkerOverridesWhatItIsGiven(t *testing.T) {
+	h := newHarness(t, fixture())
+
+	h.call("add_reminder_marker", map[string]any{
+		"reminder": "r-rent", "date": "2099-06-10",
+		"amount": 3400, "comment": "raised", "category": "Food", "notify": true,
+	})
+
+	sent := (*h.pushed)[0].ReminderMarker[0]
+	if sent.Outcome != 3400 || sent.Income != 0 {
+		t.Errorf("amount should replace the outcome side: %+v", sent)
+	}
+	if sent.Comment == nil || *sent.Comment != "raised" {
+		t.Errorf("comment should be overridden, got %v", sent.Comment)
+	}
+	if len(sent.Tag) != 1 || sent.Tag[0] != "food" {
+		t.Errorf("category should be overridden, got %v", sent.Tag)
+	}
+	if !sent.Notify {
+		t.Error("notify should be overridden")
+	}
+}
+
+func TestAddReminderMarkerRefusesWhatItCannotResolve(t *testing.T) {
+	transfer := fixture()
+	transfer.Reminder = append(transfer.Reminder, zen.Reminder{
+		ID: "r-move", StartDate: "2026-04-01",
+		Outcome: 300, Income: 300, OutcomeAccount: "cash", IncomeAccount: "eur",
+		OutcomeInstrument: 1, IncomeInstrument: 2,
+	})
+
+	cases := []struct {
+		name string
+		data zen.DiffResponse
+		args map[string]any
+		want string
+	}{
+		{"unknown reminder", fixture(), map[string]any{
+			"reminder": "nothing like this", "date": "2099-06-10",
+		}, "add_reminder"},
+		{"ambiguous match", fixture(), map[string]any{
+			"reminder": "n", "date": "2099-06-10",
+		}, "reminders:"},
+		{"day already planned", fixture(), map[string]any{
+			"reminder": "r-rent", "date": "2099-04-10",
+		}, "already planned"},
+		{"bad date", fixture(), map[string]any{
+			"reminder": "r-rent", "date": "10.06.2099",
+		}, "YYYY-MM-DD"},
+		{"bare amount on a transfer", transfer, map[string]any{
+			"reminder": "r-move", "date": "2099-06-10", "amount": 400,
+		}, "ambiguous"},
+		{"unknown category", fixture(), map[string]any{
+			"reminder": "r-rent", "date": "2099-06-10", "category": "Yachts",
+		}, "not found"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t, tc.data)
+			msg := h.callErr("add_reminder_marker", tc.args)
+			if !strings.Contains(msg, tc.want) {
+				t.Errorf("expected %q in the error, got: %s", tc.want, msg)
+			}
+			if len(*h.pushed) != 0 {
+				t.Error("a rejected occurrence must not be sent")
+			}
+		})
+	}
+}
+
+func TestAddReminderMarkerClearsAnInheritedValue(t *testing.T) {
+	data := fixture()
+	data.Reminder[0].Tag = []string{"food"}
+	data.Reminder[0].Comment = ptr("membership")
+	h := newHarness(t, data)
+
+	h.call("add_reminder_marker", map[string]any{
+		"reminder": "r-rent", "date": "2099-06-10", "category": "", "comment": "",
+	})
+
+	sent := (*h.pushed)[0].ReminderMarker[0]
+	if sent.Tag != nil {
+		t.Errorf("an empty category should drop it, got %v", sent.Tag)
+	}
+	if sent.Comment != nil {
+		t.Errorf("an empty comment should drop it, got %v", *sent.Comment)
+	}
+	// Untouched fields still come from the reminder.
+	if sent.Payee == nil || *sent.Payee != "Landlord" {
+		t.Errorf("the payee should be untouched, got %v", sent.Payee)
+	}
+}
+
+func TestAddReminderMarkerPlansADayAlreadyProcessed(t *testing.T) {
+	h := newHarness(t, fixture())
+
+	// mk3 sits on 2020-05-05 but is processed, so the day is free again.
+	h.call("add_reminder_marker", map[string]any{
+		"reminder": "r-once", "date": "2020-05-05",
+	})
+
+	if got := (*h.pushed)[0].ReminderMarker[0].Date; got != "2020-05-05" {
+		t.Errorf("unexpected date: %s", got)
 	}
 }

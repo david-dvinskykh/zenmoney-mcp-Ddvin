@@ -320,6 +320,44 @@ func (s *State) ApplyLocalTransaction(t Transaction, resp *DiffResponse) {
 	s.Persist()
 }
 
+// ApplyLocalReminder records a reminder that was just pushed to ZenMoney. Same
+// contract as ApplyLocalTransaction: the optimistic copy goes in first so the
+// server's echo replaces it, then the whole response diff is applied.
+//
+// The occurrences are not written here — ZenMoney expands the series into
+// reminderMarkers itself and returns them in the same response.
+func (s *State) ApplyLocalReminder(r Reminder, resp *DiffResponse) {
+	s.mu.Lock()
+	kept := make([]Reminder, 0, len(s.reminders)+1)
+	for _, existing := range s.reminders {
+		if existing.ID != r.ID {
+			kept = append(kept, existing)
+		}
+	}
+	s.reminders = append(kept, r)
+	s.applyDiffLocked(resp)
+	s.mu.Unlock()
+
+	s.Persist()
+}
+
+// ApplyLocalReminderMarker records a single occurrence that was just pushed, as
+// above.
+func (s *State) ApplyLocalReminderMarker(m ReminderMarker, resp *DiffResponse) {
+	s.mu.Lock()
+	kept := make([]ReminderMarker, 0, len(s.reminderMarkers)+1)
+	for _, existing := range s.reminderMarkers {
+		if existing.ID != m.ID {
+			kept = append(kept, existing)
+		}
+	}
+	s.reminderMarkers = append(kept, m)
+	s.applyDiffLocked(resp)
+	s.mu.Unlock()
+
+	s.Persist()
+}
+
 // ApplyLocalDeletions records deletions that were just pushed to ZenMoney so the
 // local snapshot matches the server without another round trip. Like a write,
 // the response is a diff since our last serverTimestamp and has to be applied in

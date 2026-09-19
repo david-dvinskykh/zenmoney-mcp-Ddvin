@@ -24,6 +24,7 @@ func Register(server *mcp.Server, api *zen.API, st *zen.State) {
 	registerUpdate(server, api, st)
 	registerDelete(server, api, st)
 	registerReminders(server, api, st)
+	registerAddReminders(server, api, st)
 	registerSuggest(server, api, st)
 }
 

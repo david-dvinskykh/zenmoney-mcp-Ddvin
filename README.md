@@ -19,6 +19,8 @@ MCP server for [ZenMoney](https://zenmoney.ru) — access your personal finance 
 | `delete_transaction` | Delete transactions — expenses, income, transfers, debts |
 | `delete_object` | Delete an account, a category, or a merchant |
 | `list_reminders` | List planned transactions — recurring and one-off |
+| `add_reminder` | Plan a transaction ahead — one-off or a repeating series |
+| `add_reminder_marker` | Add one more planned occurrence to an existing series |
 | `delete_reminder` | Delete a planned transaction and its future occurrences |
 | `suggest_category` | Get auto-suggested category for a payee |
 
@@ -260,6 +262,43 @@ Repeat with `confirm: true` to save. Changing the payee also updates the linked
 merchant (ZenMoney shows the merchant in preference to the raw payee), so it is
 re-matched by name or cleared. Editing overwrites the old values — there is no
 undo.
+
+## Planning ahead
+
+`add_reminder` creates a planned transaction. Leave `interval` out and it is a
+one-off dated entry; pass `interval` (`day`, `week`, `month`, `year`) and it
+repeats. `step` says how many intervals apart the repeats are, so
+`interval: "week", step: 2` is fortnightly:
+
+```
+add_reminder({
+  type: "expense", account: "Checking", amount: 1200,
+  start_date: "2026-04-01", interval: "month", comment: "Rent"
+})
+
+Reminder added:
+
+- 2026-04-01 | expense  | -1200 PLN | Home | Landlord — "Rent" | every month | id: `f1e2…`
+
+Planned: 2026-04-01, 2026-05-01, 2026-06-01 (+9 more).
+```
+
+`type` picks the shape of the operation: `expense` and `income` take `account`,
+`transfer` takes `from_account` and `to_account` (and both amounts when the two
+accounts hold different currencies, as `add_transfer` does).
+
+ZenMoney expands a series into dated occurrences — reminder *markers* — on its
+own side, and returns them with the write, which is where the "Planned:" line
+comes from. `points` is the advanced knob for a series that fires more than once
+per window: positions inside the step window, counted in `interval` units from
+`start_date` and zero-based, so `interval: "day", step: 7, points: [0, 2, 4]`
+repeats weekly on the start weekday plus two and four days later. It defaults to
+`[0]` — once per window.
+
+`add_reminder_marker` adds a single occurrence to a series that already exists:
+an extra rent month, a one-off top-up. It copies the reminder's accounts,
+amount, category, payee and comment unless you override them, and refuses to
+plan a day the series is already planned for.
 
 ## Deleting data
 

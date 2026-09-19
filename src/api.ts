@@ -11,8 +11,8 @@ export interface DiffRequest {
   tag?: any[];
   merchant?: any[];
   budget?: any[];
-  reminder?: any[];
-  reminderMarker?: any[];
+  reminder?: Reminder[];
+  reminderMarker?: ReminderMarker[];
   transaction?: any[];
   deletion?: Deletion[];
 }
@@ -173,9 +173,14 @@ export interface Reminder {
   /** How many intervals between repeats: 2 with "week" means fortnightly. */
   step: number | null;
   /**
-   * Positions inside the interval the series fires on. The encoding differs
-   * per interval and is not documented stably, so nothing here interprets it —
-   * concrete dates come from the markers instead.
+   * Positions inside the step window the series fires on, counted in
+   * `interval` units from `startDate` and zero-based, so every point is below
+   * `step`. The documented example — `interval: "day"`, `step: 7`,
+   * `points: [0, 2, 4]` — repeats weekly on the start weekday and two and four
+   * days after it. `[0]` on its own means "once per window".
+   *
+   * add_reminder writes this field; nothing reads it back. Concrete dates come
+   * from the markers, which ZenMoney expands the series into.
    */
   points: number[] | null;
   startDate: string;

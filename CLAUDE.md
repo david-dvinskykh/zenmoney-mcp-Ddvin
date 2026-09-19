@@ -39,7 +39,7 @@ disagree.
 
 ## Go port (`go/`)
 
-`go/` holds a full port of this server: the same 15 tools, the same output text,
+`go/` holds a full port of this server: the same 17 tools, the same output text,
 the same cache file format and directory, so both implementations can share one
 cache. It adds a `-http` flag that serves the tools as a long-lived streamable
 HTTP service, which is what makes it worth having — under MetaMCP a stdio server
@@ -47,7 +47,7 @@ is respawned per client session, and the Go service is started once instead.
 Measured against a 20 593-transaction stub: 158 MB peak RSS down to 11 MB.
 
 Changes to a tool's behaviour belong in both implementations, or in neither.
-`go/README.md` records the two places they deliberately differ (date-format
+`go/README.md` records the two places they deliberately differ (argument
 validation, and the mutex the shared state needs).
 
 ## Conventions
@@ -58,8 +58,12 @@ returns a tool error result if that fails.
 
 Reminders are ZenMoney's planned transactions: a `reminder` holds the schedule
 and `reminderMarker`s are its dated occurrences. Deleting a reminder deletes its
-markers too — server-side and in `applyDeletion`. Nothing interprets a
-reminder's `points` field; concrete dates come from the markers.
+markers too — server-side and in `applyDeletion`. Creating one is the other way
+round: `add_reminder` pushes only the reminder and ZenMoney expands the series
+into markers itself, returning them in the same response — so the tools never
+compute a date. `points` is written by `add_reminder` and read by nothing: it
+holds positions inside the step window, counted in `interval` units from
+`startDate` and zero-based, so every point is below `step`.
 
 Destructive tools are two-step: without `confirm: true` they only report what
 would happen. That covers `update_transaction` as well — an edit overwrites the

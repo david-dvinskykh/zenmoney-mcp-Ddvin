@@ -31,11 +31,13 @@ type Deletion struct {
 // DiffRequest is one call to /v8/diff/. Every entity slice is omitted unless
 // the caller is pushing changes of that kind.
 type DiffRequest struct {
-	CurrentClientTimestamp int64         `json:"currentClientTimestamp"`
-	ServerTimestamp        int64         `json:"serverTimestamp"`
-	ForceFetch             []string      `json:"forceFetch,omitempty"`
-	Transaction            []Transaction `json:"transaction,omitempty"`
-	Deletion               []Deletion    `json:"deletion,omitempty"`
+	CurrentClientTimestamp int64            `json:"currentClientTimestamp"`
+	ServerTimestamp        int64            `json:"serverTimestamp"`
+	ForceFetch             []string         `json:"forceFetch,omitempty"`
+	Transaction            []Transaction    `json:"transaction,omitempty"`
+	Reminder               []Reminder       `json:"reminder,omitempty"`
+	ReminderMarker         []ReminderMarker `json:"reminderMarker,omitempty"`
+	Deletion               []Deletion       `json:"deletion,omitempty"`
 }
 
 // DiffResponse is everything that changed since the request's serverTimestamp.
@@ -183,9 +185,14 @@ type Reminder struct {
 	Interval *string `json:"interval"`
 	// Step is how many intervals between repeats: 2 with "week" means fortnightly.
 	Step *int64 `json:"step"`
-	// Points are positions inside the interval the series fires on. The
-	// encoding differs per interval and is not documented stably, so nothing
-	// here interprets it — concrete dates come from the markers instead.
+	// Points are positions inside the step window the series fires on, counted
+	// in Interval units from StartDate and zero-based, so every point is below
+	// Step. The documented example — interval "day", step 7, points [0, 2, 4] —
+	// repeats weekly on the start weekday and two and four days after it. [0]
+	// on its own means "once per window".
+	//
+	// add_reminder writes this field; nothing reads it back. Concrete dates
+	// come from the markers, which ZenMoney expands the series into.
 	Points    []int64 `json:"points"`
 	StartDate string  `json:"startDate"`
 	EndDate   *string `json:"endDate"`

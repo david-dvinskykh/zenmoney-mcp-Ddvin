@@ -196,6 +196,37 @@ export class ZenState {
   }
 
   /**
+   * Record a reminder that was just pushed to ZenMoney. Same contract as
+   * `applyLocalTransaction`: the optimistic copy goes in first so the server's
+   * echo replaces it, then the whole response diff is applied.
+   *
+   * The occurrences are not written here — ZenMoney expands the series into
+   * `reminderMarker`s itself and returns them in the same response.
+   */
+  async applyLocalReminder(
+    reminder: Reminder,
+    resp: DiffResponse
+  ): Promise<void> {
+    this.reminders = this.reminders.filter((r) => r.id !== reminder.id);
+    this.reminders.push(reminder);
+    this.applyDiff(resp);
+    await this.persist();
+  }
+
+  /** Record a single occurrence that was just pushed, as above. */
+  async applyLocalReminderMarker(
+    marker: ReminderMarker,
+    resp: DiffResponse
+  ): Promise<void> {
+    this.reminderMarkers = this.reminderMarkers.filter(
+      (m) => m.id !== marker.id
+    );
+    this.reminderMarkers.push(marker);
+    this.applyDiff(resp);
+    await this.persist();
+  }
+
+  /**
    * Record deletions that were just pushed to ZenMoney so the local snapshot
    * matches the server without another round trip. Like a write, the response
    * is a diff since our last serverTimestamp and has to be applied in full.

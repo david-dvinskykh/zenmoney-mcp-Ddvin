@@ -58,13 +58,13 @@ local stub.
 
 ## Parity
 
-All 15 tools are ported with the same names, arguments and output text:
+All 17 tools are ported with the same names, arguments and output text:
 `sync_data`, `list_accounts`, `list_categories`, `list_merchants`,
 `list_transactions`, `add_expense`, `add_income`, `add_transfer`, `add_debt`,
 `update_transaction`, `delete_transaction`, `delete_object`, `list_reminders`,
-`delete_reminder`, `suggest_category`.
+`add_reminder`, `add_reminder_marker`, `delete_reminder`, `suggest_category`.
 
-The behaviours the TypeScript tests pin down are pinned here too (39 Go tests):
+The behaviours the TypeScript tests pin down are pinned here too (51 Go tests):
 incremental sync from the cached timestamp, the additive merge that keeps entity
 order, deletions cascading from accounts, tags and reminders, the two-step
 `confirm` flow on every destructive tool, the debt currency invariant, and
@@ -73,9 +73,10 @@ serving a stale snapshot when the live sync fails.
 Two differences worth knowing:
 
 - **Argument validation.** The TypeScript server uses zod, so `amount` being
-  positive and `date` matching `YYYY-MM-DD` are rejected by the schema. The Go
-  SDK validates types, not string formats, so the tools check the date format
-  themselves and report it as a tool error instead of a protocol error.
+  positive, `date` matching `YYYY-MM-DD` and `add_reminder`'s `type` and
+  `interval` being one of their allowed words are rejected by the schema. The Go
+  SDK validates types, not string formats or enums, so the tools check those
+  themselves and report them as a tool error instead of a protocol error.
 - **Concurrency.** One `zen.State` is now shared by concurrent sessions, so it is
   mutex-guarded. Writers replace slices rather than mutate them, which lets a
   reader keep using the slice it was handed. `go test -race ./...` is clean.

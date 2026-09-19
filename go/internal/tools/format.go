@@ -63,6 +63,20 @@ func operationOfReminder(r zen.Reminder) Operation {
 	}
 }
 
+func operationOfMarker(m zen.ReminderMarker) Operation {
+	return Operation{
+		Income:            m.Income,
+		Outcome:           m.Outcome,
+		IncomeAccount:     m.IncomeAccount,
+		OutcomeAccount:    m.OutcomeAccount,
+		IncomeInstrument:  m.IncomeInstrument,
+		OutcomeInstrument: m.OutcomeInstrument,
+		Tag:               m.Tag,
+		Payee:             m.Payee,
+		Comment:           m.Comment,
+	}
+}
+
 // Summary is one operation rendered for display.
 type Summary struct {
 	Kind Kind
