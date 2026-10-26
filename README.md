@@ -22,6 +22,8 @@ MCP server for [ZenMoney](https://zenmoney.ru) — access your personal finance 
 | `add_reminder` | Plan a transaction ahead — one-off or a repeating series |
 | `add_reminder_marker` | Add one more planned occurrence to an existing series |
 | `delete_reminder` | Delete a planned transaction and its future occurrences |
+| `list_budgets` | Show a month's category budgets — planned expense and income |
+| `set_budget` | Set, change, or remove a category's budget for a month |
 | `suggest_category` | Get auto-suggested category for a payee |
 
 **No manual sync needed.** Any tool syncs on demand if the data isn't loaded yet,
@@ -194,7 +196,8 @@ Once configured, start a conversation and ask your AI client to:
 6. **Edit** — "That coffee was 350, not 500", "Move yesterday's lunch to the Restaurants category"
 7. **Delete** — "Delete yesterday's duplicate coffee expense", "Remove that transfer to Savings"
 8. **Plan** — "What payments are coming up?", "Cancel the gym reminder"
-9. **Refresh** — "Sync my ZenMoney data" (only needed to pull changes mid-conversation)
+9. **Budget** — "What is my October budget?", "Set the Food budget for November to 1500"
+10. **Refresh** — "Sync my ZenMoney data" (only needed to pull changes mid-conversation)
 
 ## Debts
 
@@ -307,6 +310,22 @@ per window.
 an extra rent month, a one-off top-up. It copies the reminder's accounts,
 amount, category, payee and comment unless you override them, and refuses to
 plan a day the series is already planned for.
+
+## Budgets
+
+A ZenMoney budget is one row per category and month: a planned expense, a
+planned income, and a lock on each. A locked amount was set by hand; an
+unlocked one is the app's own forecast, which `list_budgets` marks as
+*(suggested)*. Amounts are in the user's main currency.
+
+```
+set_budget({ month: "2026-11", category: "Food", outcome: 1500 })
+```
+
+previews the change; repeat with `confirm: true` to save. Only the side you pass
+is touched, and a saved amount is locked so the forecast does not replace it.
+Passing `0` removes that side — ZenMoney has no budget deletion, a budget is
+cleared by a zero amount with the lock off, which is what the tool writes.
 
 ## Deleting data
 

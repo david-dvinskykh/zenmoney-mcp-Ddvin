@@ -37,6 +37,7 @@ type DiffRequest struct {
 	Transaction            []Transaction    `json:"transaction,omitempty"`
 	Reminder               []Reminder       `json:"reminder,omitempty"`
 	ReminderMarker         []ReminderMarker `json:"reminderMarker,omitempty"`
+	Budget                 []Budget         `json:"budget,omitempty"`
 	Deletion               []Deletion       `json:"deletion,omitempty"`
 }
 
@@ -51,6 +52,7 @@ type DiffResponse struct {
 	Merchant        []Merchant       `json:"merchant"`
 	Reminder        []Reminder       `json:"reminder"`
 	ReminderMarker  []ReminderMarker `json:"reminderMarker"`
+	Budget          []Budget         `json:"budget"`
 	Transaction     []Transaction    `json:"transaction"`
 	Deletion        []Deletion       `json:"deletion"`
 }
@@ -161,6 +163,37 @@ type Transaction struct {
 	Longitude           *float64 `json:"longitude"`
 	ReminderMarker      *string  `json:"reminderMarker"`
 	QRCode              *string  `json:"qrCode"`
+}
+
+// Budget is a monthly budget for one category. There is no id: a budget is
+// keyed by Tag and Date, and writing one for the same pair replaces it. Amounts
+// are in the user's currency (User.Currency).
+//
+// A lock marks the amount as set by hand; an unlocked one is the app's own
+// suggestion. There is no deletion — a budget is removed by writing a zero
+// amount with the lock off.
+type Budget struct {
+	User    int64 `json:"user"`
+	Changed int64 `json:"changed"`
+	// Tag is the category id, or nil for the month as a whole.
+	Tag *string `json:"tag"`
+	// Date is the first day of the month, YYYY-MM-01.
+	Date              string  `json:"date"`
+	Income            float64 `json:"income"`
+	Outcome           float64 `json:"outcome"`
+	IncomeLock        bool    `json:"incomeLock"`
+	OutcomeLock       bool    `json:"outcomeLock"`
+	IsIncomeForecast  *bool   `json:"isIncomeForecast,omitempty"`
+	IsOutcomeForecast *bool   `json:"isOutcomeForecast,omitempty"`
+}
+
+// BudgetKey identifies a budget: there is one per category and month.
+func BudgetKey(b Budget) string {
+	tag := ""
+	if b.Tag != nil {
+		tag = *b.Tag
+	}
+	return tag + "|" + b.Date
 }
 
 // Reminder is a planned transaction: either a one-off entry dated in the

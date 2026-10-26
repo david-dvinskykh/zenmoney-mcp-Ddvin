@@ -6,12 +6,12 @@
     "url": "https://github.com/david-dvinskykh/zenmoney-mcp-Ddvin",
     "source": "github"
   },
-  "version": "0.7.1",
+  "version": "0.8.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "zenmoney-mcp-ddvin",
-      "version": "0.7.1",
+      "version": "0.8.0",
       "transport": {
         "type": "stdio"
       },

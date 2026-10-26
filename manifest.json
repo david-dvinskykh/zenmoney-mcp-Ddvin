@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "zenmoney-mcp-ddvin",
   "display_name": "ZenMoney",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "description": "Access ZenMoney personal finance data — accounts, categories, transactions, transfers, debts.",
   "long_description": "MCP server for ZenMoney. Sync accounts, browse categories and merchants, list/filter transactions over arbitrary date ranges, add expenses/income, transfer between accounts (including cross-currency), record debts and repayments, edit any existing transaction, delete transactions (expenses, income, transfers, debts) and accounts/categories/merchants, list and delete planned transactions (reminders), and auto-suggest categories for known payees.",
   "author": {
@@ -58,6 +58,8 @@
     { "name": "delete_object", "description": "Delete an account, a category, or a merchant." },
     { "name": "list_reminders", "description": "List planned transactions — recurring and one-off." },
     { "name": "delete_reminder", "description": "Delete a planned transaction and its future occurrences." },
+    { "name": "list_budgets", "description": "Show a month's category budgets." },
+    { "name": "set_budget", "description": "Set, change, or remove a category's budget for a month." },
     { "name": "suggest_category", "description": "Suggest a category for a given payee." }
   ]
 }

@@ -68,7 +68,7 @@ func TestSyncForcesFullFetchOnFirstRun(t *testing.T) {
 	if len(req.ForceFetch) == 0 {
 		t.Fatal("first sync should send forceFetch")
 	}
-	for _, want := range []string{"reminder", "reminderMarker", "transaction"} {
+	for _, want := range []string{"reminder", "reminderMarker", "budget", "transaction"} {
 		found := false
 		for _, got := range req.ForceFetch {
 			if got == want {
@@ -447,3 +447,26 @@ func ids(txs []Transaction) []string {
 }
 
 func strPtr(s string) *string { return &s }
+
+func TestTagDeletionDropsItsBudgetsAndItsChildren(t *testing.T) {
+	food := "food"
+	st := NewState(nil, nil)
+	st.tags = []Tag{{ID: "food"}, {ID: "groceries", Parent: &food}, {ID: "salary"}}
+	st.budgets = []Budget{
+		{Tag: ptrTo("food"), Date: "2026-03-01"},
+		{Tag: ptrTo("groceries"), Date: "2026-03-01"},
+		{Tag: ptrTo("salary"), Date: "2026-03-01"},
+		{Tag: nil, Date: "2026-03-01"},
+	}
+	st.applyDeletionLocked("tag", "food")
+
+	var left []string
+	for _, b := range st.budgets {
+		left = append(left, BudgetKey(b))
+	}
+	if strings.Join(left, ",") != "salary|2026-03-01,|2026-03-01" {
+		t.Errorf("budgets left = %v", left)
+	}
+}
+
+func ptrTo(s string) *string { return &s }

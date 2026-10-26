@@ -58,13 +58,14 @@ local stub.
 
 ## Parity
 
-All 17 tools are ported with the same names, arguments and output text:
+All 19 tools are ported with the same names, arguments and output text:
 `sync_data`, `list_accounts`, `list_categories`, `list_merchants`,
 `list_transactions`, `add_expense`, `add_income`, `add_transfer`, `add_debt`,
 `update_transaction`, `delete_transaction`, `delete_object`, `list_reminders`,
-`add_reminder`, `add_reminder_marker`, `delete_reminder`, `suggest_category`.
+`add_reminder`, `add_reminder_marker`, `delete_reminder`, `list_budgets`,
+`set_budget`, `suggest_category`.
 
-The behaviours the TypeScript tests pin down are pinned here too (55 Go tests):
+The behaviours the TypeScript tests pin down are pinned here too (60 Go tests):
 incremental sync from the cached timestamp, the additive merge that keeps entity
 order, deletions cascading from accounts, tags and reminders, the two-step
 `confirm` flow on every destructive tool, the debt currency invariant, and
