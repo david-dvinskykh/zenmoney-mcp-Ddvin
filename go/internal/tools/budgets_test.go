@@ -24,7 +24,7 @@ func TestListBudgetsRendersTheMonth(t *testing.T) {
 
 	out := h.call("list_budgets", map[string]any{"month": "2026-03"})
 	want := "Budgets for 2026-03 (3):\n\n" +
-		"- **(whole month)**: expense 2000 PLN (suggested), income none\n" +
+		"- **(whole month)**: expense 2000 PLN, income none\n" +
 		"- **Food**: expense 500 PLN, income none — id: `food`\n" +
 		"- **Salary**: expense none, income 8000 PLN — id: `salary`"
 	if out != want {
@@ -39,7 +39,7 @@ func TestListBudgetsRendersTheMonth(t *testing.T) {
 	}
 }
 
-func TestSetBudgetPreviewsThenWritesALockedAmount(t *testing.T) {
+func TestSetBudgetPreviewsThenWritesKeepingTheLock(t *testing.T) {
 	h := newHarness(t, budgetFixture())
 
 	out := h.call("set_budget", map[string]any{"month": "2026-03", "category": "Food", "outcome": 650})
@@ -66,12 +66,22 @@ func TestSetBudgetPreviewsThenWritesALockedAmount(t *testing.T) {
 	}
 }
 
+func TestSetBudgetLeavesAnUnlockedBudgetUnlocked(t *testing.T) {
+	h := newHarness(t, budgetFixture())
+
+	h.call("set_budget", map[string]any{"month": "2026-03", "category": "Groceries", "outcome": 300, "confirm": true})
+	sent := (*h.pushed)[0].Budget[0]
+	if sent.Outcome != 300 || sent.OutcomeLock {
+		t.Fatalf("an unlocked budget should stay unlocked: %+v", sent)
+	}
+}
+
 func TestSetBudgetCreatesAndRemoves(t *testing.T) {
 	h := newHarness(t, budgetFixture())
 
 	h.call("set_budget", map[string]any{"month": "2026-06", "category": "Salary", "income": 3000, "confirm": true})
 	created := (*h.pushed)[0].Budget[0]
-	if created.Date != "2026-06-01" || created.Income != 3000 || !created.IncomeLock || created.OutcomeLock {
+	if created.Date != "2026-06-01" || created.Income != 3000 || created.IncomeLock || created.OutcomeLock {
 		t.Fatalf("unexpected new budget: %+v", created)
 	}
 

@@ -17,10 +17,10 @@ function isEmpty(b: Budget): boolean {
   return b.income === 0 && b.outcome === 0 && !b.incomeLock && !b.outcomeLock;
 }
 
-/** One side of a budget: "none", or the amount with a note when unlocked. */
+/** One side of a budget: "none", or the amount. */
 function sideText(amount: number, locked: boolean, currency: string): string {
   if (amount === 0 && !locked) return "none";
-  return `${amount} ${currency}${locked ? "" : " (suggested)"}`;
+  return `${amount} ${currency}`;
 }
 
 export function registerBudgetTools(
@@ -31,8 +31,7 @@ export function registerBudgetTools(
   server.tool(
     "list_budgets",
     "List the monthly category budgets in ZenMoney — the planned expense and income per category " +
-      "for one month, in the user's main currency. An amount marked (suggested) is the app's own " +
-      "forecast rather than one set by hand. Syncs automatically if needed.",
+      "for one month, in the user's main currency. Syncs automatically if needed.",
     {
       month: z
         .string()
@@ -158,15 +157,16 @@ export function registerBudgetTools(
 
       const now = Math.floor(Date.now() / 1000);
       const updated: Budget = { ...original, user: user.id, changed: now };
-      // A hand-set amount is locked so the app's forecast does not replace
-      // it; a removal unlocks, which is how ZenMoney itself clears a budget.
+      // The lock is left as it was: it is not a "set by hand" flag (a live
+      // account showed every budget unlocked, hand-typed ones included). Only
+      // a removal clears it, which is how ZenMoney itself drops a budget.
       if (outcome !== undefined) {
         updated.outcome = outcome;
-        updated.outcomeLock = outcome !== 0;
+        if (outcome === 0) updated.outcomeLock = false;
       }
       if (income !== undefined) {
         updated.income = income;
-        updated.incomeLock = income !== 0;
+        if (income === 0) updated.incomeLock = false;
       }
 
       const changes: string[] = [];

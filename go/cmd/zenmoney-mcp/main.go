@@ -26,7 +26,7 @@ import (
 )
 
 // version tracks the TypeScript server this port mirrors.
-const version = "0.8.0"
+const version = "0.8.1"
 
 func main() {
 	addr := flag.String("http", "", "serve streamable HTTP on this address (e.g. :8081) instead of stdio")

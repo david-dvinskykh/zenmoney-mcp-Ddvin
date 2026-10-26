@@ -68,7 +68,7 @@ describe("list_budgets", () => {
     const text = getTextContent(await call("list_budgets", { month: "2026-03" }));
     expect(text).toBe(
       "Budgets for 2026-03 (3):\n\n" +
-        "- **(whole month)**: expense 2000 USD (suggested), income none\n" +
+        "- **(whole month)**: expense 2000 USD, income none\n" +
         "- **Food**: expense 500 USD, income none — id: `tag-food`\n" +
         "- **Salary**: expense none, income 3000 USD — id: `tag-salary`"
     );
@@ -101,7 +101,7 @@ describe("set_budget", () => {
     expect(api.diff).not.toHaveBeenCalled();
   });
 
-  it("writes a locked budget and keeps the other side", async () => {
+  it("writes the amount, keeps the lock and the other side", async () => {
     const { api, state, call } = await setup([
       makeBudget({ tag: "tag-food", outcome: 500, outcomeLock: true, income: 10, incomeLock: true }),
     ]);
@@ -130,6 +130,15 @@ describe("set_budget", () => {
     expect(state.budgets[0].outcome).toBe(650);
   });
 
+  it("leaves an unlocked budget unlocked", async () => {
+    const { api, call } = await setup([makeBudget({ tag: "tag-food", outcome: 4700 })]);
+
+    await call("set_budget", { month: "2026-03", category: "Food", outcome: 5000, confirm: true });
+
+    const sent = vi.mocked(api.diff).mock.calls[0][0].budget![0];
+    expect(sent).toMatchObject({ outcome: 5000, outcomeLock: false });
+  });
+
   it("creates a budget the month did not have", async () => {
     const { api, state, call } = await setup();
 
@@ -145,7 +154,7 @@ describe("set_budget", () => {
       tag: "tag-salary",
       date: "2026-06-01",
       income: 3000,
-      incomeLock: true,
+      incomeLock: false,
       outcome: 0,
       outcomeLock: false,
     });

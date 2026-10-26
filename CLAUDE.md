@@ -80,8 +80,10 @@ diff request's `deletion` array and are mirrored locally with
 last `serverTimestamp` and must be applied in full.
 
 A budget has no id: it is keyed by `tag` and `date` (the month's first day), and
-writing the same pair replaces it. A hand-set amount carries its lock; there is no
-deletion — `set_budget` clears a side by writing 0 with the lock off. Budgets are
+writing the same pair replaces it. The lock is not a "set by hand" flag — a live
+account (26.10.2026) had every budget unlocked, hand-typed ones included — so
+writes keep it; there is no deletion, and `set_budget` clears a side by writing 0
+with the lock off. Budgets are
 part of the cache snapshot (version 3), so a tag deletion drops them too.
 
 A debt is not a separate entity: it is a transaction with the system `debt`

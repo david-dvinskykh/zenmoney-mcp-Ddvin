@@ -65,7 +65,7 @@ All 19 tools are ported with the same names, arguments and output text:
 `add_reminder`, `add_reminder_marker`, `delete_reminder`, `list_budgets`,
 `set_budget`, `suggest_category`.
 
-The behaviours the TypeScript tests pin down are pinned here too (60 Go tests):
+The behaviours the TypeScript tests pin down are pinned here too (61 Go tests):
 incremental sync from the cached timestamp, the additive merge that keeps entity
 order, deletions cascading from accounts, tags and reminders, the two-step
 `confirm` flow on every destructive tool, the debt currency invariant, and

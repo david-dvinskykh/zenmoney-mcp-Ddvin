@@ -169,9 +169,9 @@ type Transaction struct {
 // keyed by Tag and Date, and writing one for the same pair replaces it. Amounts
 // are in the user's currency (User.Currency).
 //
-// A lock marks the amount as set by hand; an unlocked one is the app's own
-// suggestion. There is no deletion — a budget is removed by writing a zero
-// amount with the lock off.
+// The locks are not a "set by hand" flag: a live account showed every budget
+// unlocked, hand-typed amounts included. Writes leave them as they are. There is
+// no deletion — a budget is removed by writing a zero amount with the lock off.
 type Budget struct {
 	User    int64 `json:"user"`
 	Changed int64 `json:"changed"`

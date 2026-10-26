@@ -33,16 +33,12 @@ func isEmptyBudget(b zen.Budget) bool {
 	return b.Income == 0 && b.Outcome == 0 && !b.IncomeLock && !b.OutcomeLock
 }
 
-// budgetSide renders one side of a budget: "none", or the amount with a note
-// when it is unlocked.
+// budgetSide renders one side of a budget: "none", or the amount.
 func budgetSide(amount float64, locked bool, currency string) string {
 	if amount == 0 && !locked {
 		return "none"
 	}
-	if locked {
-		return num(amount) + " " + currency
-	}
-	return num(amount) + " " + currency + " (suggested)"
+	return num(amount) + " " + currency
 }
 
 func userCurrency(st *zen.State) string {
@@ -56,8 +52,7 @@ func registerBudgets(server *mcp.Server, api *zen.API, st *zen.State) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "list_budgets",
 		Description: "List the monthly category budgets in ZenMoney — the planned expense and income per category " +
-			"for one month, in the user's main currency. An amount marked (suggested) is the app's own " +
-			"forecast rather than one set by hand. Syncs automatically if needed.",
+			"for one month, in the user's main currency. Syncs automatically if needed.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, args listBudgetsArgs) (*mcp.CallToolResult, any, error) {
 		if args.Month != nil && !monthRE.MatchString(*args.Month) {
 			return errorResult("Month must be in YYYY-MM format"), nil, nil
@@ -165,19 +160,24 @@ func registerBudgets(server *mcp.Server, api *zen.API, st *zen.State) {
 		updated := original
 		updated.User = user.ID
 		updated.Changed = now
-		// A hand-set amount is locked so the app's forecast does not replace it;
-		// a removal unlocks, which is how ZenMoney itself clears a budget.
+		// The lock is left as it was: it is not a "set by hand" flag (a live
+		// account showed every budget unlocked, hand-typed ones included). Only a
+		// removal clears it, which is how ZenMoney itself drops a budget.
 		var changes []string
 		if args.Outcome != nil {
 			updated.Outcome = *args.Outcome
-			updated.OutcomeLock = *args.Outcome != 0
+			if *args.Outcome == 0 {
+				updated.OutcomeLock = false
+			}
 			changes = append(changes, "- expense: "+
 				budgetSide(original.Outcome, original.OutcomeLock, currency)+" → "+
 				budgetSide(updated.Outcome, updated.OutcomeLock, currency))
 		}
 		if args.Income != nil {
 			updated.Income = *args.Income
-			updated.IncomeLock = *args.Income != 0
+			if *args.Income == 0 {
+				updated.IncomeLock = false
+			}
 			changes = append(changes, "- income: "+
 				budgetSide(original.Income, original.IncomeLock, currency)+" → "+
 				budgetSide(updated.Income, updated.IncomeLock, currency))

@@ -314,16 +314,15 @@ plan a day the series is already planned for.
 ## Budgets
 
 A ZenMoney budget is one row per category and month: a planned expense, a
-planned income, and a lock on each. A locked amount was set by hand; an
-unlocked one is the app's own forecast, which `list_budgets` marks as
-*(suggested)*. Amounts are in the user's main currency.
+planned income, and a lock flag on each. Amounts are in the user's main
+currency.
 
 ```
 set_budget({ month: "2026-11", category: "Food", outcome: 1500 })
 ```
 
 previews the change; repeat with `confirm: true` to save. Only the side you pass
-is touched, and a saved amount is locked so the forecast does not replace it.
+is touched, and the lock flag is left as it was.
 Passing `0` removes that side — ZenMoney has no budget deletion, a budget is
 cleared by a zero amount with the lock off, which is what the tool writes.
 
