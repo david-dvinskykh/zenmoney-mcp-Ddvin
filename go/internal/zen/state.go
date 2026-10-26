@@ -30,6 +30,7 @@ type State struct {
 	users           []User
 	reminders       []Reminder
 	reminderMarkers []ReminderMarker
+	budgets         []Budget
 	// syncedAt is the unix second of the snapshot currently in memory (0 if
 	// never synced).
 	syncedAt int64
@@ -95,6 +96,12 @@ func (s *State) ReminderMarkers() []ReminderMarker {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.reminderMarkers
+}
+
+func (s *State) Budgets() []Budget {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.budgets
 }
 
 func (s *State) IsFromCache() bool {
@@ -218,6 +225,7 @@ func (s *State) RestoreFromCache() bool {
 	s.users = data.Users
 	s.reminders = data.Reminders
 	s.reminderMarkers = data.ReminderMarkers
+	s.budgets = data.Budgets
 	s.syncedAt = data.SavedAt
 	s.restoredFromCache = true
 	return true
@@ -252,6 +260,7 @@ func (s *State) Sync(ctx context.Context, forceFull bool) (*DiffResponse, error)
 		s.users = nil
 		s.reminders = nil
 		s.reminderMarkers = nil
+		s.budgets = nil
 		s.restoredFromCache = false
 	}
 	needRestore := !forceFull && !s.synced && !s.restoredFromCache
@@ -275,7 +284,7 @@ func (s *State) Sync(ctx context.Context, forceFull bool) (*DiffResponse, error)
 	if timestamp == 0 {
 		req.ForceFetch = []string{
 			"instrument", "company", "account", "tag", "merchant",
-			"reminder", "reminderMarker", "transaction", "user",
+			"reminder", "reminderMarker", "budget", "transaction", "user",
 		}
 	}
 
@@ -368,6 +377,23 @@ func (s *State) ApplyLocalReminderMarker(m ReminderMarker, resp *DiffResponse) {
 	s.Persist()
 }
 
+// ApplyLocalBudget records a budget that was just pushed, as above.
+func (s *State) ApplyLocalBudget(b Budget, resp *DiffResponse) {
+	s.mu.Lock()
+	key := BudgetKey(b)
+	kept := make([]Budget, 0, len(s.budgets)+1)
+	for _, existing := range s.budgets {
+		if BudgetKey(existing) != key {
+			kept = append(kept, existing)
+		}
+	}
+	s.budgets = append(kept, b)
+	s.applyDiffLocked(resp)
+	s.mu.Unlock()
+
+	s.Persist()
+}
+
 // ApplyLocalDeletions records deletions that were just pushed to ZenMoney so the
 // local snapshot matches the server without another round trip. Like a write,
 // the response is a diff since our last serverTimestamp and has to be applied in
@@ -410,6 +436,7 @@ func (s *State) Persist() {
 		Users:           s.users,
 		Reminders:       s.reminders,
 		ReminderMarkers: s.reminderMarkers,
+		Budgets:         s.budgets,
 	}
 	s.mu.RUnlock()
 
@@ -428,6 +455,7 @@ func (s *State) applyDiffLocked(resp *DiffResponse) {
 	s.users = mergeByID(s.users, resp.User, func(e User) string { return strconv.FormatInt(e.ID, 10) })
 	s.reminders = mergeByID(s.reminders, resp.Reminder, func(e Reminder) string { return e.ID })
 	s.reminderMarkers = mergeByID(s.reminderMarkers, resp.ReminderMarker, func(e ReminderMarker) string { return e.ID })
+	s.budgets = mergeByID(s.budgets, resp.Budget, BudgetKey)
 	s.mergeTransactionsLocked(resp.Transaction)
 
 	for _, d := range resp.Deletion {
@@ -514,6 +542,14 @@ func (s *State) applyDeletionLocked(objectType, id string) {
 		})
 
 	case "tag":
+		// Budgets go with the category and with the children deleted below.
+		gone := map[string]bool{id: true}
+		for _, t := range s.tags {
+			if t.Parent != nil && *t.Parent == id {
+				gone[t.ID] = true
+			}
+		}
+		s.budgets = filter(s.budgets, func(b Budget) bool { return b.Tag == nil || !gone[*b.Tag] })
 		// Child categories go with the parent, and transactions lose the tag
 		// rather than keeping a dangling id.
 		s.tags = filter(s.tags, func(t Tag) bool {

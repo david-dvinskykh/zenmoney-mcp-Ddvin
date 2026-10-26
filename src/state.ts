@@ -1,6 +1,7 @@
 import {
   ZenMoneyAPI,
   type Account,
+  type Budget,
   type Tag,
   type Merchant,
   type Company,
@@ -13,6 +14,11 @@ import {
   type ReminderMarker,
 } from "./api.js";
 import type { StateCache } from "./cache.js";
+
+/** A budget has no id of its own: it is one per category and month. */
+export function budgetKey(b: Pick<Budget, "tag" | "date">): string {
+  return `${b.tag ?? ""}|${b.date}`;
+}
 
 export class ZenState {
   private api: ZenMoneyAPI;
@@ -27,6 +33,7 @@ export class ZenState {
   users: User[] = [];
   reminders: Reminder[] = [];
   reminderMarkers: ReminderMarker[] = [];
+  budgets: Budget[] = [];
   /** Unix seconds of the snapshot currently in memory (0 if never synced). */
   syncedAt = 0;
   /** Set when the data came from cache because a live sync failed. */
@@ -107,6 +114,7 @@ export class ZenState {
     this.users = data.users ?? [];
     this.reminders = data.reminders ?? [];
     this.reminderMarkers = data.reminderMarkers ?? [];
+    this.budgets = data.budgets ?? [];
     this.syncedAt = data.savedAt;
     this.restoredFromCache = true;
     return true;
@@ -136,6 +144,7 @@ export class ZenState {
       this.users = [];
       this.reminders = [];
       this.reminderMarkers = [];
+      this.budgets = [];
       this.restoredFromCache = false;
     } else if (!this.synced && !this.restoredFromCache) {
       // Fresh process: pick up where the last one left off so this sync is
@@ -159,6 +168,7 @@ export class ZenState {
         "merchant",
         "reminder",
         "reminderMarker",
+        "budget",
         "transaction",
         "user",
       ];
@@ -230,6 +240,15 @@ export class ZenState {
     await this.persist();
   }
 
+  /** Record a budget that was just pushed, as above. */
+  async applyLocalBudget(budget: Budget, resp: DiffResponse): Promise<void> {
+    const key = budgetKey(budget);
+    this.budgets = this.budgets.filter((b) => budgetKey(b) !== key);
+    this.budgets.push(budget);
+    this.applyDiff(resp);
+    await this.persist();
+  }
+
   /**
    * Record deletions that were just pushed to ZenMoney so the local snapshot
    * matches the server without another round trip. Like a write, the response
@@ -271,6 +290,7 @@ export class ZenState {
         users: this.users,
         reminders: this.reminders,
         reminderMarkers: this.reminderMarkers,
+        budgets: this.budgets,
       });
     } catch (error) {
       console.error(
@@ -289,6 +309,7 @@ export class ZenState {
     this.mergeEntities("users", resp.user, (e) => e.id);
     this.mergeEntities("reminders", resp.reminder, (e) => e.id);
     this.mergeEntities("reminderMarkers", resp.reminderMarker, (e) => e.id);
+    this.mergeEntities("budgets", resp.budget, budgetKey);
     this.mergeTransactions(resp.transaction);
 
     if (resp.deletion) {
@@ -346,7 +367,13 @@ export class ZenState {
           (t) => t.incomeAccount !== id && t.outcomeAccount !== id
         );
         break;
-      case "tag":
+      case "tag": {
+        // Budgets go with the category and with the children deleted below.
+        const gone = new Set([
+          id,
+          ...this.tags.filter((t) => t.parent === id).map((t) => t.id),
+        ]);
+        this.budgets = this.budgets.filter((b) => !b.tag || !gone.has(b.tag));
         this.tags = this.tags.filter((t) => t.id !== id);
         // Child categories go with the parent, and transactions lose the tag
         // rather than keeping a dangling id.
@@ -357,6 +384,7 @@ export class ZenState {
           return { ...t, tag: rest.length > 0 ? rest : null };
         });
         break;
+      }
       case "merchant":
         this.merchants = this.merchants.filter((m) => m.id !== id);
         this.transactions = this.transactions.map((t) =>

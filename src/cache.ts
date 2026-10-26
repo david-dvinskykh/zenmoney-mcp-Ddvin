@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type {
   Account,
+  Budget,
   Company,
   Instrument,
   Merchant,
@@ -17,7 +18,8 @@ import type {
 // 2: reminders and their markers joined the snapshot. A version 1 file has
 // none of them, and an incremental sync from its timestamp would never report
 // the ones that already exist, so old snapshots are dropped rather than read.
-export const CACHE_VERSION = 2;
+// 3: budgets joined the snapshot, for the same reason.
+export const CACHE_VERSION = 3;
 
 export interface CacheData {
   version: number;
@@ -33,6 +35,7 @@ export interface CacheData {
   users: User[];
   reminders: Reminder[];
   reminderMarkers: ReminderMarker[];
+  budgets: Budget[];
 }
 
 /**

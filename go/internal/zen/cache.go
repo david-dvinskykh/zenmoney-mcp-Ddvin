@@ -15,8 +15,8 @@ import (
 // CacheVersion 2: reminders and their markers joined the snapshot. A version 1
 // file has none of them, and an incremental sync from its timestamp would never
 // report the ones that already exist, so old snapshots are dropped rather than
-// read.
-const CacheVersion = 2
+// read. Version 3 added budgets, for the same reason.
+const CacheVersion = 3
 
 // CacheData is the on-disk snapshot. Field names match the TypeScript server's
 // file byte for byte so both implementations can share one cache directory.
@@ -34,6 +34,7 @@ type CacheData struct {
 	Users           []User           `json:"users"`
 	Reminders       []Reminder       `json:"reminders"`
 	ReminderMarkers []ReminderMarker `json:"reminderMarkers"`
+	Budgets         []Budget         `json:"budgets"`
 }
 
 // TokenHash is a stable, non-reversible id for a token. It names the cache file

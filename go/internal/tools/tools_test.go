@@ -50,7 +50,7 @@ func newHarnessWith(
 		_ = json.NewDecoder(r.Body).Decode(&req)
 
 		if len(req.Transaction) > 0 || len(req.Deletion) > 0 ||
-			len(req.Reminder) > 0 || len(req.ReminderMarker) > 0 {
+			len(req.Reminder) > 0 || len(req.ReminderMarker) > 0 || len(req.Budget) > 0 {
 			pushed = append(pushed, req)
 			if writeResponse != nil {
 				_ = json.NewEncoder(w).Encode(writeResponse(req))

@@ -14,6 +14,7 @@ import { registerDebtTools } from "./tools/debts.js";
 import { registerSuggestTools } from "./tools/suggest.js";
 import { registerDeleteTools } from "./tools/delete.js";
 import { registerReminderTools } from "./tools/reminders.js";
+import { registerBudgetTools } from "./tools/budgets.js";
 
 const token = process.env.ZENMONEY_TOKEN;
 if (!token) {
@@ -44,6 +45,7 @@ registerDebtTools(server, api, state);
 registerUpdateTools(server, api, state);
 registerDeleteTools(server, api, state);
 registerReminderTools(server, api, state);
+registerBudgetTools(server, api, state);
 registerSuggestTools(server, api, state);
 
 async function main() {

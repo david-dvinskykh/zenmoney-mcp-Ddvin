@@ -33,13 +33,13 @@ disagree.
 - `src/state.ts` — in-memory state, auto-sync (`ensureSynced`), cache restore/persist
 - `src/cache.ts` — on-disk snapshot keyed by `sha256(token)`, survives process restarts
 - `src/tools/` — MCP tool registrations (sync, accounts, categories, transactions,
-  debts, update, delete, reminders, suggest) plus `format.ts`, the shared
+  debts, update, delete, reminders, budgets, suggest) plus `format.ts`, the shared
   transaction renderer, and `resolve.ts`, the shared account/category/merchant
   lookups
 
 ## Go port (`go/`)
 
-`go/` holds a full port of this server: the same 17 tools, the same output text,
+`go/` holds a full port of this server: the same 19 tools, the same output text,
 the same cache file format and directory, so both implementations can share one
 cache. It adds a `-http` flag that serves the tools as a long-lived streamable
 HTTP service, which is what makes it worth having — under MetaMCP a stdio server
@@ -78,6 +78,11 @@ old values — so its preview renders a before/after pair. Deletions go out as t
 diff request's `deletion` array and are mirrored locally with
 `state.applyLocalDeletions()` — like any write, the response is a diff since the
 last `serverTimestamp` and must be applied in full.
+
+A budget has no id: it is keyed by `tag` and `date` (the month's first day), and
+writing the same pair replaces it. A hand-set amount carries its lock; there is no
+deletion — `set_budget` clears a side by writing 0 with the lock off. Budgets are
+part of the cache snapshot (version 3), so a tag deletion drops them too.
 
 A debt is not a separate entity: it is a transaction with the system `debt`
 account (`account.type === "debt"`, one per user) on one side. Both legs carry

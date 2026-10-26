@@ -58,6 +58,8 @@
     { "name": "delete_object", "description": "Delete an account, a category, or a merchant." },
     { "name": "list_reminders", "description": "List planned transactions — recurring and one-off." },
     { "name": "delete_reminder", "description": "Delete a planned transaction and its future occurrences." },
+    { "name": "list_budgets", "description": "Show a month's category budgets." },
+    { "name": "set_budget", "description": "Set, change, or remove a category's budget for a month." },
     { "name": "suggest_category", "description": "Suggest a category for a given payee." }
   ]
 }

@@ -10,7 +10,7 @@ export interface DiffRequest {
   account?: any[];
   tag?: any[];
   merchant?: any[];
-  budget?: any[];
+  budget?: Budget[];
   reminder?: Reminder[];
   reminderMarker?: ReminderMarker[];
   transaction?: any[];
@@ -37,7 +37,7 @@ export interface DiffResponse {
   account: Account[];
   tag: Tag[];
   merchant: Merchant[];
-  budget: any[];
+  budget: Budget[];
   reminder: Reminder[];
   reminderMarker: ReminderMarker[];
   transaction: Transaction[];
@@ -147,6 +147,30 @@ export interface Transaction {
   longitude: number | null;
   reminderMarker: string | null;
   qrCode: string | null;
+}
+
+/**
+ * A monthly budget for one category. There is no id: a budget is keyed by
+ * `tag` and `date`, and writing one for the same pair replaces it. Amounts are
+ * in the user's currency (`user.currency`).
+ *
+ * A lock marks the amount as set by hand; an unlocked one is the app's own
+ * suggestion. There is no deletion — a budget is removed by writing a zero
+ * amount with the lock off.
+ */
+export interface Budget {
+  user: number;
+  changed: number;
+  /** Category id, or null for the month as a whole. */
+  tag: string | null;
+  /** First day of the month, YYYY-MM-01. */
+  date: string;
+  income: number;
+  outcome: number;
+  incomeLock: boolean;
+  outcomeLock: boolean;
+  isIncomeForecast?: boolean;
+  isOutcomeForecast?: boolean;
 }
 
 /**
